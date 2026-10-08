@@ -1,0 +1,2574 @@
+PROMPT P7: MUI frontend, first-run API key dialog, chat frame. Paste the WHOLE text below into opencode in order P0 to P9; paste P7 only after all earlier prompts are green.
+
+# 1. Role:
+
+Web user interface expert for a chatbot running locally on Windows 11.
+Author of the presentation layer: static HTML plus plain ES module code, no build step.
+Use React 18 UMD and MUI 5 UMD loaded from a CDN, no npm bundling, no Babel.
+Responsible for the API key dialog shown exactly while `configured` is still false.
+Responsible for the chat frame: AppBar, message list, input box, Send button, new conversation button.
+Write code with `React.createElement`, absolutely no JSX, no `innerHTML`, no `dangerouslySetInnerHTML`.
+Keep rule B2: one function per file, each file under 100 lines, no files added outside the agreed directory tree.
+Keep the safety rule: the API key lives only in the input box while typing, never in `localStorage`, never in the console.
+Use only PowerShell commands for checks, do not run the server inside the opencode shell.
+
+# 2. Context (5W1H):
+
+- What: build `static/index.html`, exactly 10 js files in `static/js/` per B2 (`session_id.js`, `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`, `message_bubble.js`, `setup_dialog.js`, `chat_view.js`, `send_handler.js`, `main.js`) and the file `tests/test_static_rules.py`. Do not modify the Python files of P2 to P6, do not modify files owned by P8 and P9.
+- Why: this is the first chatbot layer the learner touches. The API key dialog is a precondition for the chat frame to work, so a bug here blocks the whole first-run flow and leaves P8 and P9 unable to verify anything.
+- Who/Where: runs in the Chrome or Edge browser on a Windows 11 machine, every file served by the Flask server at `http://127.0.0.1:2610`; the code lives in `chatbot/static/`, the presentation layer mostly does not touch `src/chatbot/domain` or `application`.
+- When: P7 is the eighth prompt in the ten-prompt chain (P0 to P9). It runs after P6 (which already has a green `interface/*` and `run.py`) and before P8 (build `system-prompt.txt` then run the end-to-end test). P7 is the mandatory input of P8 and P9.
+- How: each js file is an ES module exporting exactly one function. `main.js` calls `api_status`; when `configured` is false it renders `setup_dialog` first, and only then renders `chat_view`. During chat, code 409 or 401 makes `send_handler` ask to reopen `setup_dialog`.
+- Prompt shape: this section prints only item 1, item 2, item 3a and item 3b. BLUEPRINT is inserted verbatim in the middle, the B part follows right after item 3b. Write in formal-spec style with PRE, POST, INV, ERR, KILL, logic symbols, a decision table and runnable sample code.
+- Constraints: accented Vietnamese for narration and comments, keep English for code names, JSON keys and commands; only short dashes. Forbidden JSX, forbidden build step, forbidden code in INV.2, forbidden code in INV.2. CDN URLs are labelled UNVERIFIED until the learner confirms them. The valid key used in manual checks is always `TEST_KEY_` plus twenty x characters.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE:
+
+- PRE.1: P6 is done and `py -m pytest -q` is green before P7 is written. Check with `py -m pytest -q` in the `chatbot/` directory.
+- PRE.2: The `chatbot/static/` and `chatbot/static/js/` directories already exist. Check with `Get-ChildItem static -Recurse`.
+- PRE.3: The five APIs of B7 are ready and return the correct contract: `/api/health`, `/api/setup/status`, `/api/setup`, `/api/chat`, `/api/reset`. Check with `Invoke-RestMethod http://127.0.0.1:2610/api/setup/status`.
+- PRE.4: Every API error returns exactly the two keys `{"error": "<mã>", "message": "<tiếng Việt>"}`; the `error` field is the decision source in `send_handler` and `setup_dialog`.
+- PRE.5: The Flask server serves `static/` and the route `/` returns `static/index.html`. Check with `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- PRE.6: Same origin so do NOT write CORS code in js; every `fetch` path starts with `/api/`.
+- PRE.7: No build step so every js file is a plain browser ES module: NO `require`, NO `module.exports`, NO Node-specific syntax.
+- PRE.8: `crypto.randomUUID()` is available on recent Chrome and Edge; a fallback via `Math.random` producing a string matching `^[A-Za-z0-9-]{8,64}$` is required.
+- PRE.9: `tests/test_static_rules.py` is written BEFORE every js file following TDD: run `py -m pytest -q tests\test_static_rules.py` to see it red, then write the js until it is green.
+- PRE.10: Use only PowerShell commands for checks; do NOT use bash commands; do NOT run `py run.py` in the opencode shell, use `Start-Process`.
+- PRE.11: CDN URLs in `index.html` must carry the UNVERIFIED label until the learner opens the browser and confirms they load.
+- PRE.12: The key used for manual checks is `TEST_KEY_` plus twenty x characters; do NOT write a real key into any project file.
+- PRE.13: `AGENTS.md` is generated by P0 and already holds the seven rules; P7 does not modify that file and does not generate any additional rule file.
+- PRE.14: The fake server test keys of the automated test suite at B13 are ready: the key `TEST_KEY_` plus twenty x characters returns 200, the key `TEST_KEY_BAD` plus twenty x characters returns 401, the key `TEST_KEY_RATE` plus twenty x characters returns 429.
+
+POST:
+
+- POST.1: `static/index.html` loads in this order: the Roboto font, the Material Symbols Outlined icon font, React 18 UMD, ReactDOM 18 UMD, MUI 5 UMD, then `<script type="module" src="/static/js/main.js"></script>`. Check in the Network tab of the browser: the five CDN resources return 200.
+- POST.2: There are exactly 11 files in `static/`: one `index.html` and ten js files matching the B2 names. Check with `Get-ChildItem -Recurse static -Include *.html,*.js | Select-Object -ExpandProperty Name`.
+- POST.3: Each js file exports exactly one public function and is under 100 lines. Check with the 100-line command at B11, it must print nothing.
+- POST.4: First run with a `.env` that has no `OPENAI_API_KEY` line: the dialog appears before the chat frame; pressing the Save button with a valid key closes the dialog, the chat frame appears, and a message can be sent right away without restarting the server.
+- POST.5: `localStorage["session_id"]` is generated only once then reused across every page load. Check by reloading the page and observing that the value does not change.
+- POST.6: No file in `static/` contains the forbidden code of INV.2. Check with `Select-String` using a sample list joined by string concatenation, it must print nothing.
+- POST.7: A message with accented Vietnamese, emoji and the characters `<script>` renders verbatim. Check by sending `Xin chào <script>alert(1)</script> 😀`.
+- POST.8: `py -m pytest -q` is fully green, including `tests/test_static_rules.py`. Check with `py -m pytest -q`.
+- POST.9: Every case in the manual check table KT.1 to KT.20 can be performed by hand in the browser, and the results are recorded in the acceptance section of P9.
+- POST.10: No js file contains an API key constant. Check with `Select-String` with a pattern assembled from two string pieces, it must print nothing.
+- POST.11: The Send button and the input box are locked while waiting for a response; pressing Send twice in a row creates only one user message and one `/api/chat` call. Check in the Network tab.
+- POST.12: Every entry in decision table D1 to D3 performs the corresponding action when its signal fires.
+
+INV:
+
+- INV.1: ∀ file in `static/js/` and ∀ `index.html`: line count < 100.
+- INV.2: ∀ file in `static/`: NO `innerHTML`, NO `dangerouslySetInnerHTML`, NO `ReactDOM.render`, NO `eval`, NO `new Function`, NO `className`.
+- INV.3: ∀ presentation file (`chat_view.js`, `setup_dialog.js`, `message_bubble.js`): use `React.createElement`; NO JSX syntax.
+- INV.4: ∀ js file: exactly one `export` statement; the dependency graph between js files is a tree, NO cycles.
+- INV.5: ∀ `fetch` call to the server: the absolute path starts with `/api/`.
+- INV.6: ∀ `fetch` function in `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: returns exactly the three keys `ok`, `status`, `data` and throws nothing outward.
+- INV.7: ∀ network error in `fetch`: the result is `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- INV.8: ∀ HTML character sent by the user: displayed verbatim as a string child of a React element, NOT interpreted into an element, NO code executed.
+- INV.9: The API key is NEVER written to `localStorage`, `sessionStorage`, cookie, query string, browser log or `console`.
+- INV.10: The API key exists only in the `state` of the password-type input box while typing and while sending; immediately after the send command finishes the key box is cleared to the empty string.
+- INV.11: `POST /api/chat` never receives history from the client; the request body contains only `message` and `session_id`; extra fields on the server side are ignored.
+- INV.12: ∀ js file: displayed messages and comments written in accented Vietnamese; function names, JSON keys and paths stay English.
+- INV.13: ∀ button element and ∀ input box: has an `aria-label` in accented Vietnamese.
+- INV.14: The Send button and the input box are locked while waiting; pressing Send twice in a row creates exactly one user message and exactly one `/api/chat` call.
+- INV.15: Dialog: the Save button is locked while sending; when `POST /api/setup` returns `ok` the dialog closes and the chat frame appears immediately.
+- INV.16: If `POST /api/setup` returns 400 with code `invalid_api_key`: the dialog keeps its open state, shows an `Alert` with `message` from the server, and clears the key box.
+- INV.17: If `POST /api/setup` returns 403 or 500: show an `Alert` with an accented Vietnamese message and allow a retry.
+- INV.18: If `status` returns `ok` false with `status` equal to 0: `main.js` shows the network message together with the hint to run `py run.py` and does NOT render the chat frame.
+- INV.19: If `window.React`, `window.ReactDOM` or `window.MaterialUI` is empty: `main.js` builds a message with plain DOM and `textContent`, prints the list of CDN URLs carrying the UNVERIFIED label, throws no blank error to the console.
+- INV.20: Two tabs using the same `session_id` still work: every send makes the server reload the history, no reliance on the tab's own memory.
+- INV.21: Pressing Enter in the input box sends; pressing Shift+Enter inserts a newline and does NOT send.
+- INV.22: Every time the message list or the error message changes, the list area auto-scrolls to the bottom by assigning `scrollTop` equal to `scrollHeight`.
+- INV.23: The new conversation button calls `POST /api/reset` with the current `session_id`; the on-screen message list is cleared only when the server returns `ok`.
+- INV.24: Code 409 or 401 during chat makes `setup_dialog` reopen; code 401 comes with the message "Khóa API không đúng", code 409 comes with a message reminding that no key exists.
+- INV.25: The client configuration does NOT copy values from `.env`; js does NOT embed `openai_model`, `openai_temperature`, `openai_timeout` or `openai_api_key`; the client only asks the server through the API.
+- INV.26: DDD on the js side is reduced to three roles: `api_*.js` is the communication port, `message_bubble.js`, `setup_dialog.js`, `chat_view.js` are the presentation layer, `main.js` is the entry point; NO layer imports in a cycle.
+- INV.27: Do NOT create any file outside the B2 directory tree; extra files such as `static/js/util.js` or `static/js/config.js` are forbidden.
+- INV.28: Do NOT use `window.alert`, `window.confirm`, `window.prompt`; every message goes through an MUI `Alert` or `Typography` component.
+- INV.29: `ReactDOM.createRoot` is the way to attach an element tree for React 18; do NOT use `ReactDOM.render`.
+- INV.30: ∀ `import` statement in js: use a relative path with the `.js` suffix, for example `import { getSessionId } from "./session_id.js";`.
+- INV.31: One public function per file: each B2 js file has exactly one exported function, the helper functions live in the same file and are not exported.
+- INV.32: TDD applies to the presentation layer: `tests/test_static_rules.py` is red first, green after, and the test must NOT be edited to turn green when the code breaks a rule.
+- INV.33: No file in `static/` contains an API key constant; the key exists only on the server in the `.env` file.
+- INV.34: Every error message displayed on the client is taken from the server's `message` field; the client must NOT invent an error code other than the codes in table D1.
+
+ERR:
+
+- ERR.1: `localStorage` is blocked because of private mode, `SecurityError` is thrown on read or write: `session_id.js` returns a temporary in-memory identifier for the page session, throws no error to `main.js`.
+- ERR.2: `GET /api/setup/status` network error: receives `{ok: false, status: 0, ...}`; `main.js` shows the network message and does NOT render the chat frame.
+- ERR.3: `GET /api/setup/status` returns a 5xx code: show `message` from the server together with the hint to run `py -m pytest -q`.
+- ERR.4: `POST /api/setup` returns 403 with code `forbidden`: show a message that access is only allowed via `http://127.0.0.1:2610`.
+- ERR.5: `POST /api/chat` returns 502 with code `empty_reply`: show a message that the model returned empty and allow resending.
+- ERR.6: `POST /api/chat` returns 503 or 504: show an overload or too slow message, re-enable the Send button immediately.
+- ERR.7: `POST /api/reset` network error: keep the on-screen message list and show an `Alert`; do NOT clear locally.
+- ERR.8: The key box receives more than 200 characters: `maxLength` blocks early and `helperText` mentions the limit; do NOT send a broken request.
+- ERR.9: The message input is longer than 4000 characters: `maxLength` blocks early; if it still reaches the server then show the 400 `message` from the server.
+- ERR.10: `session_id` in `localStorage` was edited by hand so it does not match `^[A-Za-z0-9-]{8,64}$`: `getSessionId` regenerates and overwrites it, do NOT send a broken request.
+- ERR.11: CDN resources cannot be loaded: the `boot_error` branch builds a message with plain DOM, naming React, ReactDOM, MUI and the fonts, every URL carrying the UNVERIFIED label.
+- ERR.12: `POST /api/setup` returns 401 with a message about an incorrect key: the dialog stays open, shows an `Alert`, clears the key box, the user can paste again right away.
+- ERR.13: Two chat requests sent almost at the same time by pressing Send twice: the waiting flag in `chat_view` and in `send_handler` blocks the second turn.
+- ERR.14: The response body is not valid JSON: `res.json()` catches the error and returns `{}`, the result still has all three keys per INV.6.
+
+KILL:
+
+- KILL.1: On finding a js file over 100 lines, stop writing, split the function into a new file with the correct B2 name, then continue.
+- KILL.2: On finding `innerHTML`, `dangerouslySetInnerHTML`, JSX, `ReactDOM.render` or a build command, delete that snippet and rewrite it with `React.createElement` and `ReactDOM.createRoot`.
+- KILL.3: On finding that an API key is stored in `localStorage`, `sessionStorage`, cookie, query string or `console`, stop, delete it and keep it only in the `state` of the password box.
+- KILL.4: `py -m pytest -q tests\test_static_rules.py` reports red because of a static rule violation then do NOT edit the test; fix the js code to match the rule then run again.
+- KILL.5: If a file outside the B2 directory tree is needed, stop and report it, do NOT create the file yourself.
+- KILL.6: If a command other than PowerShell is needed, stop and state the equivalent PowerShell command before running.
+- KILL.7: If a real API key must be written into any project file, stop; use only a key of the form `TEST_KEY_` plus twenty x characters for every manual case.
+- KILL.8: If you need to modify the Python files of P2 to P6 or the files of P8 and P9, stop; the scope of P7 is only `static/*` and `tests/test_static_rules.py`.
+
+Decision table D1: screen state (the state label column holds labels from this specification, NOT real runtime variables).
+
+| Signal | State label | Mandatory action | Displayed code |
+|---|---|---|---|
+| `window.React` or `window.MaterialUI` is empty | `boot_error` | build a plain DOM message with the UNVERIFIED URLs, stop | 0 |
+| `api_status` returns `ok` false, `status` equal to 0 | `boot_error` | build a network message carrying the `py run.py` command, stop | 0 |
+| `api_status` returns a 5xx code | `boot_error` | build a message with the server's `message`, stop | server code |
+| `api_status` returns `configured` false | `setup` | render `setup_dialog`, do not render `chat_view` yet | 200 |
+| `api_status` returns `configured` true | `chat` | render `chat_view` | 200 |
+| `POST /api/setup` returns `ok` | `chat` | clear the key box, close the dialog, render `chat_view` | 200 |
+| `POST /api/setup` returns 400 | `setup` | keep the dialog, show `Alert`, clear the key box | 400 |
+| `POST /api/setup` returns 403 | `setup` | show `Alert` requiring localhost access | 403 |
+| `POST /api/setup` returns 500 with code `save_failed` | `setup` | show `Alert`, allow a retry | 500 |
+| `POST /api/chat` returns `ok` | `chat` | append the assistant message, scroll down, re-enable the Send button | 200 |
+| `POST /api/chat` returns 409 | `setup` | reopen `setup_dialog` with the reminder that no key exists | 409 |
+| `POST /api/chat` returns 401 | `setup` | reopen `setup_dialog` with "Khóa API không đúng" | 401 |
+| `POST /api/chat` returns 400 | `chat` | show `Alert` in the chat frame, re-enable the Send button | 400 |
+| `POST /api/chat` returns 502 or 503 or 504 or 500 | `chat` | show the service error `Alert`, re-enable the Send button | server code |
+| `POST /api/reset` returns `ok` | `chat` | clear the on-screen message list | 200 |
+| `POST /api/reset` returns another code | `chat` | keep the message list, show `Alert` | server code |
+
+Decision table D2: requirements for `static/index.html`.
+
+| Order | Mandatory content | Note |
+|---|---|---|
+| 1 | `<html lang="vi">` and `<meta charset="utf-8">` | mandatory for accented Vietnamese |
+| 2 | `<title>` in accented Vietnamese, not empty | shown on the browser tab |
+| 3 | Roboto font link from Google Fonts | mark UNVERIFIED |
+| 4 | Material Symbols Outlined icon font link from Google Fonts | mark UNVERIFIED, used for the `Icon` component |
+| 5 | `script` tag loading React 18 UMD, global variable `React` | mark UNVERIFIED |
+| 6 | `script` tag loading ReactDOM 18 UMD, global variable `ReactDOM` | mark UNVERIFIED |
+| 7 | `script` tag loading MUI 5 UMD, global variable `MaterialUI` | mark UNVERIFIED |
+| 8 | one `<div id="root"></div>` element | mount point for `ReactDOM.createRoot` |
+| 9 | `<script type="module" src="/static/js/main.js"></script>` | loaded after the CDN tags, no `defer` |
+
+Decision table D3: layout and sizes.
+
+| Property | Specified value | Check |
+|---|---|---|
+| content width | max 900 px, centered | look at the horizontal bar |
+| chat frame height | `100vh`, single vertical column layout, message list scrolls on its own | look at the scrollbar inside the chat frame |
+| window narrowed to 800 px | still usable, bubbles shrink thanks to percentage `maxWidth` and `overflowWrap` | shrink the window |
+| phone breakpoint | do NOT do it | do not write width queries |
+| icons | `Icon` component with ligature names, do NOT hand-draw SVG, do NOT use emoji | check by eye |
+
+Sample `static/js/session_id.js`:
+
+```javascript
+// Sinh và giữ định danh phiên trong localStorage; tuyệt đối không lưu khóa API ở đây.
+let tam = null;
+const HOP_LE = /^[A-Za-z0-9-]{8,64}$/;
+
+function sinhId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return "s-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+export function getSessionId() {
+  const khoa = "session_id";
+  let gia = null;
+  try {
+    gia = localStorage.getItem(khoa);
+  } catch (loi) {
+    return tam || (tam = sinhId());
+  }
+  if (gia !== null && HOP_LE.test(gia)) {
+    return gia;
+  }
+  const moi = sinhId();
+  try {
+    localStorage.setItem(khoa, moi);
+  } catch (loi) {
+    tam = moi;
+  }
+  return moi;
+}
+```
+
+Sample `static/js/api_status.js`:
+
+```javascript
+// Gọi GET /api/setup/status và chuẩn hoá lỗi mạng thành status bằng 0.
+export async function apiStatus() {
+  try {
+    const res = await fetch("/api/setup/status", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const duLieu = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: duLieu };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+Sample `static/js/api_setup.js`:
+
+```javascript
+// Gửi khóa API tới POST /api/setup; không ghi khóa vào bất kỳ kho lưu trữ nào của trình duyệt.
+export async function apiSetup(apiKey) {
+  try {
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    const duLieu = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: duLieu };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+Sample `static/js/api_chat.js`:
+
+```javascript
+// Gửi tin người tới POST /api/chat; thân chỉ có message và session_id, không gửi lịch sử.
+export async function apiChat(sessionId, message) {
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ message: message, session_id: sessionId }),
+    });
+    const duLieu = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: duLieu };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+Sample `static/js/api_reset.js`:
+
+```javascript
+// Gọi POST /api/reset để xóa lịch sử phía máy chủ cho một phiên.
+export async function apiReset(sessionId) {
+  try {
+    const res = await fetch("/api/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    const duLieu = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: duLieu };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+Sample `static/js/message_bubble.js`:
+
+```javascript
+// Bong bóng tin: nội dung là CHUỖI con của phần tử React nên React tự thoát ký tự đặc biệt.
+export function messageBubble(role, content, khoa) {
+  const laNguoi = role === "human";
+  const nen = laNguoi ? "primary.main" : "grey.100";
+  const chu = laNguoi ? "primary.contrastText" : "text.primary";
+  return React.createElement(
+    MaterialUI.Box,
+    { key: khoa, sx: { display: "flex", alignItems: "flex-start", my: 1 } },
+    React.createElement(
+      MaterialUI.Icon,
+      { sx: { mx: 1 }, "aria-label": laNguoi ? "Biểu tượng người dùng" : "Biểu tượng trợ lý" },
+      laNguoi ? "person" : "smart_toy"
+    ),
+    React.createElement(
+      MaterialUI.Paper,
+      {
+        elevation: laNguoi ? 2 : 1,
+        sx: {
+          p: 1.5,
+          maxWidth: "80%",
+          backgroundColor: nen,
+          color: chu,
+          whiteSpace: "pre-wrap",
+          overflowWrap: "anywhere",
+        },
+      },
+      React.createElement(
+        MaterialUI.Typography,
+        { variant: "body2", component: "div", "aria-label": laNguoi ? "Tin người dùng" : "Tin trợ lý" },
+        String(content)
+      )
+    )
+  );
+}
+```
+
+Sample `static/js/setup_dialog.js`:
+
+```javascript
+// Hộp thoại nhập khóa API, hiện khi GET /api/setup/status trả configured bằng false.
+// Khóa chỉ nằm trong state của ô nhập, bị xóa ngay sau khi lệnh gửi xong.
+import { apiSetup } from "./api_setup.js";
+
+function NoiDungHopThoai(props) {
+  const [gia, setGia] = React.useState("");
+  const [dangGui, setDangGui] = React.useState(false);
+  const [loi, setLoi] = React.useState(props.thongBao || "");
+
+  const gui = async () => {
+    if (dangGui) return;
+    setDangGui(true);
+    setLoi("");
+    const kq = await apiSetup(gia);
+    setGia("");
+    setDangGui(false);
+    if (kq.ok) {
+      props.onDone(true, "");
+      return;
+    }
+    const nhan = (kq.data && kq.data.message) || "";
+    if (kq.status === 0) setLoi("Không kết nối được máy chủ, hãy chạy py run.py trong PowerShell.");
+    else if (kq.status === 403) setLoi("Chỉ được truy cập bằng http://127.0.0.1:2610.");
+    else setLoi(nhan || "Không lưu được khóa API, hãy thử lại.");
+  };
+
+  const nhanPhim = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      gui();
+    }
+  };
+
+  return React.createElement(
+    MaterialUI.Dialog,
+    { open: true, fullWidth: true, maxWidth: "sm", "aria-label": "Hộp thoại nhập khóa API" },
+    React.createElement(
+      MaterialUI.DialogTitle,
+      null,
+      React.createElement(
+        MaterialUI.Box,
+        { sx: { display: "flex", alignItems: "center", gap: 1 } },
+        React.createElement(MaterialUI.Icon, { "aria-label": "Biểu tượng khóa API" }, "key"),
+        "Nhập khóa API"
+      )
+    ),
+    React.createElement(
+      MaterialUI.DialogContent,
+      null,
+      loi
+        ? React.createElement(MaterialUI.Alert, { severity: "error", sx: { mb: 2 } }, loi)
+        : null,
+      React.createElement(MaterialUI.TextField, {
+        autoFocus: true,
+        fullWidth: true,
+        type: "password",
+        label: "Khóa API",
+        value: gia,
+        onChange: (e) => setGia(e.target.value),
+        onKeyDown: nhanPhim,
+        disabled: dangGui,
+        maxLength: 200,
+        helperText: "Khóa chỉ được lưu trong tệp .env trên máy của bạn.",
+        inputProps: { "aria-label": "Ô nhập khóa API" },
+      })
+    ),
+    React.createElement(
+      MaterialUI.DialogActions,
+      null,
+      React.createElement(
+        MaterialUI.Button,
+        { variant: "contained", onClick: gui, disabled: dangGui, "aria-label": "Nút lưu khóa API" },
+        dangGui ? "Đang lưu..." : "Lưu"
+      )
+    )
+  );
+}
+
+export function setupDialog(sessionId, onDone, thongBao) {
+  return React.createElement(NoiDungHopThoai, { sessionId, onDone, thongBao });
+}
+```
+
+Sample `static/js/send_handler.js`:
+
+```javascript
+// Gửi một lượt chat và trả về trạng thái mới cho khung chat.
+// Không giữ DOM, không giữ khóa API, chỉ đọc session_id đã sinh ở session_id.js.
+import { apiChat } from "./api_chat.js";
+
+export async function sendHandler(trangThai, text) {
+  const hienTai = trangThai.history.concat([{ role: "human", content: text }]);
+  const kq = await apiChat(trangThai.sessionId, text);
+  if (kq.ok) {
+    const traLoi = (kq.data && kq.data.reply) || "";
+    return { history: hienTai.concat([{ role: "ai", content: traLoi }]), error: "", canSetup: false, setupMessage: "" };
+  }
+  if (kq.status === 409) {
+    return { history: hienTai, error: "", canSetup: true, setupMessage: "Chưa có khóa API, hãy nhập lại." };
+  }
+  if (kq.status === 401) {
+    return { history: hienTai, error: "", canSetup: true, setupMessage: "Khóa API không đúng." };
+  }
+  const nhan = (kq.data && kq.data.message) || "";
+  const gh = kq.status === 0 ? "Không kết nối được máy chủ." : (nhan || "Lỗi máy chủ, thử lại.");
+  return { history: hienTai, error: gh, canSetup: false, setupMessage: "" };
+}
+```
+
+Sample `static/js/chat_view.js`:
+
+```javascript
+// Khung chat: AppBar, danh sách tin, ô nhập, nút Gửi, nút cuộc trò chuyện mới.
+import { messageBubble } from "./message_bubble.js";
+import { sendHandler } from "./send_handler.js";
+import { apiReset } from "./api_reset.js";
+import { setupDialog } from "./setup_dialog.js";
+
+function Khung(props) {
+  const [lichSu, setLichSu] = React.useState([]);
+  const [text, setText] = React.useState("");
+  const [cho, setCho] = React.useState(false);
+  const [loi, setLoi] = React.useState("");
+  const [moKhoa, setMoKhoa] = React.useState(null);
+  const vung = React.useRef(null);
+
+  React.useEffect(() => {
+    if (vung.current) vung.current.scrollTop = vung.current.scrollHeight;
+  }, [lichSu, loi]);
+
+  const gui = async () => {
+    const ban = text.trim();
+    if (ban === "" || cho) return;
+    setCho(true);
+    setLoi("");
+    setText("");
+    const kq = await sendHandler({ sessionId: props.sessionId, history: lichSu }, ban);
+    setLichSu(kq.history);
+    setCho(false);
+    setLoi(kq.error);
+    setMoKhoa(kq.canSetup ? kq.setupMessage : null);
+  };
+
+  const moi = async () => {
+    const kq = await apiReset(props.sessionId);
+    if (kq.ok) {
+      setLichSu([]);
+      setLoi("");
+    } else {
+      setLoi((kq.data && kq.data.message) || "Không xóa được lịch sử.");
+    }
+  };
+
+  const nhanPhim = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      gui();
+    }
+  };
+
+  const danhSach = lichSu.map((m, i) => messageBubble(m.role, m.content, i));
+  const oNhap = React.createElement(MaterialUI.TextField, {
+    fullWidth: true,
+    multiline: true,
+    maxRows: 6,
+    maxLength: 4000,
+    value: text,
+    disabled: cho,
+    label: "Tin nhắn",
+    onChange: (e) => setText(e.target.value),
+    onKeyDown: nhanPhim,
+    inputProps: { "aria-label": "Ô nhập tin nhắn" },
+  });
+  const nutGui = React.createElement(
+    MaterialUI.Button,
+    { variant: "contained", disabled: cho, onClick: gui, "aria-label": "Nút gửi tin" },
+    React.createElement(MaterialUI.Icon, { sx: { mr: 1 }, "aria-label": "Biểu tượng gửi" }, "send"),
+    cho ? "Đang trả lời..." : "Gửi"
+  );
+
+  return React.createElement(
+    MaterialUI.Box,
+    { sx: { maxWidth: 900, mx: "auto", height: "100vh", display: "flex", flexDirection: "column", fontFamily: "Roboto, sans-serif" } },
+    React.createElement(
+      MaterialUI.AppBar,
+      { position: "static", color: "primary" },
+      React.createElement(
+        MaterialUI.Toolbar,
+        null,
+        React.createElement(MaterialUI.Icon, { sx: { mr: 1 }, "aria-label": "Biểu tượng chatbot" }, "smart_toy"),
+        React.createElement(MaterialUI.Typography, { variant: "h6", sx: { flexGrow: 1 } }, "Chatbot hỏi đáp"),
+        React.createElement(
+          MaterialUI.IconButton,
+          { onClick: moi, "aria-label": "Nút cuộc trò chuyện mới" },
+          React.createElement(MaterialUI.Icon, { "aria-label": "Biểu tượng xóa hội thoại" }, "delete_sweep")
+        )
+      )
+    ),
+    React.createElement(
+      MaterialUI.Box,
+      { ref: vung, sx: { flexGrow: 1, overflowY: "auto", p: 2 } },
+      loi ? React.createElement(MaterialUI.Alert, { severity: "error", sx: { mb: 2 } }, loi) : null,
+      danhSach
+    ),
+    React.createElement(
+      MaterialUI.Box,
+      { sx: { p: 2, borderTop: "1px solid #dddddd" } },
+      oNhap,
+      React.createElement(MaterialUI.Box, { sx: { mt: 1, display: "flex", justifyContent: "flex-end" } }, nutGui)
+    ),
+    moKhoa
+      ? React.createElement(setupDialog, { sessionId: props.sessionId, onDone: () => setMoKhoa(null), thongBao: moKhoa })
+      : null
+  );
+}
+
+export function chatView(sessionId) {
+  return React.createElement(Khung, { sessionId });
+}
+```
+
+Sample `static/js/main.js`:
+
+```javascript
+// Điểm vào của trang: kiểm tài nguyên CDN, hỏi trạng thái khóa rồi chọn màn hình theo bảng D1.
+import { apiStatus } from "./api_status.js";
+import { setupDialog } from "./setup_dialog.js";
+import { chatView } from "./chat_view.js";
+import { getSessionId } from "./session_id.js";
+
+function loiKhoiDong(tieuDe, dong) {
+  const goc = document.getElementById("root");
+  const khung = document.createElement("div");
+  khung.setAttribute("style", "max-width:900px;margin:48px auto;padding:0 16px;font-family:Roboto,sans-serif");
+  const t = document.createElement("h2");
+  t.textContent = tieuDe;
+  const p = document.createElement("p");
+  p.textContent = dong;
+  const l = document.createElement("pre");
+  l.textContent = "Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'";
+  const u = document.createElement("p");
+  u.textContent = "Kiểm tra mạng rồi mở lại bằng http://127.0.0.1:2610.";
+  const v = document.createElement("p");
+  v.textContent = "URL CDN ghi UNVERIFIED cho tới khi thử: React 18, ReactDOM 18, MUI 5, phông Roboto, phông biểu tượng Material Symbols Outlined.";
+  khung.append(t, p, l, u, v);
+  goc.replaceChildren(khung);
+}
+
+function ve(node) {
+  ReactDOM.createRoot(document.getElementById("root")).render(node);
+}
+
+export async function main() {
+  const thieu = !globalThis.React || !globalThis.ReactDOM || !globalThis.MaterialUI;
+  if (thieu) {
+    loiKhoiDong("Không tải được tài nguyên giao diện", "CDN không tải được, trình duyệt có thể đang chặn mạng.");
+    return;
+  }
+  const trangThai = await apiStatus();
+  if (!trangThai.ok) {
+    const nhan = trangThai.status === 0
+      ? "Không kết nối được máy chủ."
+      : ((trangThai.data && trangThai.data.message) || "Máy chủ trả lỗi.");
+    loiKhoiDong("Chưa kết nối được chatbot", nhan);
+    return;
+  }
+  const sessionId = getSessionId();
+  const daCauHinh = Boolean(trangThai.data && trangThai.data.configured);
+  ve(daCauHinh ? chatView(sessionId) : setupDialog(sessionId, () => ve(chatView(sessionId))));
+}
+
+main();
+```
+
+Sample `tests/test_static_rules.py`, written before the code following TDD. The forbidden samples are assembled from two string pieces so that the test file itself does not contain the sample it checks.
+
+```python
+"""Kiểm luật tĩnh cho lớp trình bày: đủ tệp, dưới 100 dòng, không mã cấm, không lộ khóa."""
+
+from pathlib import Path
+
+THU_MUC = Path(__file__).resolve().parents[1]
+THU_MUC_JS = THU_MUC / "static" / "js"
+TAP_JS = [
+    "api_chat.js", "api_reset.js", "api_setup.js", "api_status.js", "chat_view.js",
+    "main.js", "message_bubble.js", "send_handler.js", "session_id.js",
+    "setup_dialog.js",
+]
+CAN_KHUONG = [
+    "inner" + "HTML",
+    "dangerouslySet" + "InnerHTML",
+    "React" + "DOM.render",
+    "eval" + "(",
+    "new Function",
+    "className" + "=",
+    "console" + ".",
+    "window" + ".alert",
+    "window" + ".confirm",
+]
+DAU_KHOA = "sk" + "-"
+TAP_TRINH_BAY = ["message_bubble.js", "setup_dialog.js", "chat_view.js"]
+
+
+def _doc(duong_dan: Path) -> str:
+    return duong_dan.read_text(encoding="utf-8")
+
+
+def _tat_ca() -> list:
+    return [THU_MUC / "static" / "index.html"] + [THU_MUC_JS / ten for ten in TAP_JS]
+
+
+def test_index_html_nap_module_vao_root():
+    html = _doc(THU_MUC / "static" / "index.html")
+    assert 'id="root"' in html
+    assert 'type="module"' in html
+    assert "/static/js/main.js" in html
+
+
+def test_dung_muoi_tap_js_khong_thua():
+    hien_co = sorted(p.name for p in THU_MUC_JS.glob("*.js"))
+    assert hien_co == sorted(TAP_JS)
+
+
+def test_moi_tap_du_100_dong():
+    for duong in _tat_ca():
+        assert len(_doc(duong).splitlines()) < 100, duong.name
+
+
+def test_khong_ma_cam():
+    for duong in _tat_ca():
+        noi_dung = _doc(duong)
+        for cam in CAN_KHUONG:
+            assert cam not in noi_dung, duong.name + " chua mau cam " + cam
+
+
+def test_khong_khoa_api_hard_code():
+    for ten in TAP_JS:
+        noi_dung = _doc(THU_MUC_JS / ten)
+        assert DAU_KHOA not in noi_dung, ten
+        assert "TEST_KEY_" not in noi_dung, ten
+
+
+def test_moi_tap_chi_mot_export():
+    for ten in TAP_JS:
+        noi_dung = _doc(THU_MUC_JS / ten)
+        assert noi_dung.count("export ") == 1, ten
+        assert "export default" not in noi_dung, ten
+
+
+def test_chi_session_id_moi_duoc_ghi_local_storage():
+    for ten in TAP_JS:
+        noi_dung = _doc(THU_MUC_JS / ten)
+        if "localStorage.setItem" in noi_dung:
+            assert ten == "session_id.js", ten
+
+
+def test_tap_trinh_bay_dung_create_element_va_nhan_tien_ich():
+    for ten in TAP_TRINH_BAY:
+        noi_dung = _doc(THU_MUC_JS / ten)
+        assert "React.createElement" in noi_dung, ten
+        assert "MaterialUI.Button" not in noi_dung or "aria-label" in noi_dung, ten
+```
+
+PowerShell commands used for checks, in exactly this run order:
+
+```powershell
+py -m pytest -q tests\test_static_rules.py
+py -m pytest -q
+Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+$cam = @('inner' + 'HTML', 'dangerouslySet' + 'InnerHTML', 'React' + 'DOM.render', 'eval' + '(')
+Select-String -Path static\js\*.js -Pattern $cam
+$dam = 'sk' + '-'
+Select-String -Path static\js\*.js -Pattern $dam
+Get-ChildItem -Recurse static -Include *.html,*.js | Select-Object -ExpandProperty Name
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:2610/api/health
+Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 2610).OwningProcess
+```
+
+The first five commands must run and print no over-limit file, no line matching a forbidden sample, no hard-coded key; the `Get-ChildItem -Recurse static` command must print exactly eleven files consisting of one html file and ten js files.
+
+Browser manual check table, record the results in the acceptance section of P9:
+
+| No. | Action | Expected result | Rule map |
+|---|---|---|---|
+| KT.1 | delete the `OPENAI_API_KEY` line from `.env`, run `py run.py`, open `http://127.0.0.1:2610` | the "Nhập khóa API" dialog appears before the chat frame | D1 row `configured` false |
+| KT.2 | paste the key `TEST_KEY_` plus ten x characters then press the Save button | a format error from the server appears, the dialog stays open, the key box is cleared | INV.16, ERR.8 |
+| KT.3 | paste the key `TEST_KEY_` plus twenty x characters then press the Save button | the dialog closes, the chat frame appears, calling `/api/setup/status` again returns `configured` true | POST.4, D1 row `POST /api/setup` returns `ok` |
+| KT.4 | open DevTools, look at the Application section, Local Storage | only the `session_id` key, NO API key value | INV.9 |
+| KT.5 | send the message `Xin chào <script>alert(1)</script> 😀` | the `<script>` characters appear verbatim, no alert dialog at all | INV.8, POST.7 |
+| KT.6 | press the Send button twice very fast | only one user message, only one `/api/chat` call in the Network tab | INV.14, ERR.13 |
+| KT.7 | press Enter in the input box | the message is sent | INV.21 |
+| KT.8 | press Shift+Enter in the input box | inserts a new line, does NOT send | INV.21 |
+| KT.9 | send a message of about twenty lines | the message list auto-scrolls to the bottom | INV.22 |
+| KT.10 | type more than four thousand characters in the input box | the input frame blocks it, the limit is not exceeded | ERR.9 |
+| KT.11 | press the new conversation button | `/api/reset` returns 200, the message list is empty, the input box is ready | INV.23 |
+| KT.12 | stop the server then press the Send button | shows "Không kết nối được máy chủ", the page does not go blank | INV.7, ERR.2 |
+| KT.13 | set the key `TEST_KEY_BAD` plus twenty x characters in `.env`, restart, send a message | receives 401, the dialog reopens with "Khóa API không đúng" | INV.24, ERR.12 |
+| KT.14 | delete the key in `.env` while the server is running, send a message | receives 409, the dialog reopens with the reminder that no key exists | INV.24 |
+| KT.15 | set the key `TEST_KEY_RATE` plus twenty x characters, send a message | receives 503, shows the overload message, the Send button is re-enabled immediately | ERR.6 |
+| KT.16 | open two tabs with the same `session_id` and send a message in both | both tabs receive history from the server, no message lost | INV.20 |
+| KT.17 | block `localStorage` in DevTools then reload the page | the page still runs with the temporary identifier, no error in the console | ERR.1 |
+| KT.18 | block the CDN domain then reload the page | shows the resource load failure message with the list of URLs marked UNVERIFIED | INV.19, ERR.11 |
+| KT.19 | change `session_id` in Local Storage to a too-short string then reload the page | the page regenerates a valid identifier and overwrites it | ERR.10 |
+| KT.20 | use the Tab key to browse through the buttons, then run the 100-line command and `py -m pytest -q` | every button has an accented Vietnamese `aria-label`, no over-limit file printed, tests green | INV.13, POST.3, POST.8 |
+
+## 3b. Short glossary
+
+- opencode: a coding helper that runs in a command window, used to generate files in this project.
+- API: the programming interface between browser and server, here the five `/api/...` paths declared at B7.
+- endpoint: a specific path of the API, for example `POST /api/setup`.
+- venv: a virtual Python environment created with `py -m venv .venv`, it isolates installed packages from the real machine.
+- pytest: the automated test runner for Python, invoked with `py -m pytest -q`.
+- DDD: domain-layered architecture, the one-way dependency arrow rule goes from interface to application then to domain.
+- TDD: write the test first, see it red, then write the minimal code to make the test green.
+- MUI: the Material UI library for React, here the version 5 UMD loaded from a CDN and used through the `MaterialUI` global variable.
+- formal spec: a formal specification that records preconditions PRE, postconditions POST, invariants INV, errors ERR and kill conditions KILL with logic symbols.
+- UMD: a library packaging format for the browser, loaded with a `script` tag then read through a global variable.
+- ES module: the browser's standard module format, loaded with `type="module"`, uses `import` and `export`.
+- CDN: a public asset delivery server; here where React, ReactDOM, MUI and the fonts are fetched.
+- aria-label: the accessibility label attribute on a control element, it lets a screen reader read the correct Vietnamese label.
+- TAIL: not used in this prompt.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation procedure (TDD)
+
+TERMS, DEFINED ONCE: opencode is a code-writing utility that runs in a command-line window, used here to generate code. An API is an application programming interface, here a service that returns external text. An endpoint is the specific path the API listens on under one HTTP method. A venv is a Python virtual environment, a separate folder holding installed libraries. pytest is the automated testing library for Python. DDD is the layered architecture style organized by business domain, the dependency-arrow rule is in B2. TDD is the discipline of writing in three cycles: write a failing test, write the minimum code to pass, then refactor without breaking green. MUI is the Material Design component set for React. A formal spec is a formal specification, that is, preconditions, postconditions, invariants and error codes written explicitly with logic notation.
+
+PRE: `run.py` and the `src/chatbot/` tree built from P1 to P6 already exist; `py -m pytest -q` runs and is green; the `static/` folder does not exist yet; the file `tests/test_static_rules.py` does not exist yet; the learner's machine browser is a recent Chrome or Edge.
+
+POST: `static/index.html` together with exactly the 10 files in `static/js/` from B2 exist; every file is under 100 lines; no file contains `innerHTML` or `dangerouslySetInnerHTML`; the page opens at `http://127.0.0.1:2610` and runs exactly the B1 flow; every manual test scenario at the end of section 3c has an observable result to record in the P7 report.
+
+INV: each file in `static/` keeps exactly one concern; each function lives in exactly one file; content is always a CHILD STRING of a React element; the API key never touches browser storage; every button and every input has an `aria-label`; only create files that are in the B2 tree, do not generate any additional helper files outside that list; ∀ `fetch` call ⇒ returns an object with exactly the three keys `ok`, `status`, `data`, that is, no call throws an exception out of the file; ∀ displayed message ⇒ the content goes through the `item.content` of the message, passed as a child of the `Typography` component, not through a raw string write mechanism.
+
+INTERPRETATION NOTE (matches B8): a file is one download unit for the browser, so the nine sub-files use classic `<script>` and register into `window.Chatbot`; `main.js` is loaded with `<script type="module">` and uses no `import` or `export` statement, so the file is both exactly an ES module and syntax-checkable with Node without depending on file mode. Load order is a mandatory rule: the nine sub-files first, `main.js` after. On the first run, `SetupDialog` is built with `open=true` before the user touches the chat frame; because it is a modal MUI `Dialog` it blocks the whole screen, and the chat frame is only a background layer. After the key is saved successfully, the dialog closes and the chat frame accepts interaction. In every file under `static/`, the three globals `React`, `ReactDOM`, `MaterialUI` are read inside functions or at the initialization block, not read at module level, so one broken file does not kill the others. Finally, no file in `static/` is allowed to be compiled, so all the code is plain `React.createElement`.
+
+### Step 1. RED cycle: lock the test rules before writing a single line of UI
+
+File to create: `tests/test_static_rules.py`.
+Function signature: `body(name) -> str` is the only helper; the tests are `test_01_required_files_exist(name)`, `test_02_no_file_reaches_100_lines(name)`, `test_03_no_forbidden_token()`, `test_04_index_html_shape()`, `test_05_markers(name, markers)`, `test_06_component_uses_create_element(name)`.
+Pseudocode algorithm: FOR each file in `JS + ["index.html"]` THEN require the file to exist; FOR each file THEN count lines with `splitlines()` and require `< 100`; FOR each file in `static/` then FOR each token in `FORBID` THEN collect into `hits` and require `hits` empty; FOR each mandatory CDN path THEN require presence; FOR each pair `(file name, marker list)` THEN require every marker not starting with `!` to be present and every marker starting with `!` to be absent.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py`
+Expected result: all tests red; the first message is `thiếu tệp index.html`; NO test is green.
+
+```python
+"""Kiểm luật tĩnh cho static/: đủ tệp, dưới 100 dòng, không innerHTML, không JSX."""
+from pathlib import Path
+
+import pytest
+
+STATIC = Path(__file__).resolve().parents[1] / "static"
+JS = ["js/session_id.js", "js/api_status.js", "js/api_setup.js", "js/api_chat.js",
+      "js/api_reset.js", "js/message_bubble.js", "js/setup_dialog.js",
+      "js/chat_view.js", "js/send_handler.js", "js/main.js"]
+VIEW = ["js/message_bubble.js", "js/setup_dialog.js", "js/chat_view.js", "js/main.js"]
+FORBID = ["innerHTML", "dangerouslySetInnerHTML", "document.write", "eval(", "require("]
+LIMIT = 100
+NET = ["fetch(", "ok: false", "status: 0", "Không kết nối được máy chủ"]
+RULES = [
+    ("js/session_id.js", ["localStorage", "randomUUID", "A-Za-z0-9-", "try", "catch"]),
+    ("js/api_status.js", NET),
+    ("js/api_setup.js", NET),
+    ("js/api_chat.js", NET),
+    ("js/api_reset.js", NET),
+    ("js/message_bubble.js", ["React.createElement", "Paper", "Typography", "item.content"]),
+    ("js/setup_dialog.js", ['type: "password"', 'setValue("")', "aria-label", "Alert",
+                            "!localStorage", "!sessionStorage"]),
+    ("js/chat_view.js", ['event.key !== "Enter"', "event.shiftKey", "scrollIntoView",
+                         "Cuộc trò chuyện mới", "disabled", "aria-label"]),
+    ("js/send_handler.js", ["409", "401", "onRequireKey", "apiReset", "finally", "sending"]),
+    ("js/main.js", ["apiStatus", "SetupDialog", "ChatView", "textContent", "MaterialUI",
+                    "!localStorage"]),
+]
+
+
+def body(name):
+    return (STATIC / name).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", JS + ["index.html"])
+def test_01_required_files_exist(name):
+    assert (STATIC / name).is_file(), f"thiếu tệp {name}"
+
+
+@pytest.mark.parametrize("name", JS + ["index.html"])
+def test_02_no_file_reaches_100_lines(name):
+    count = len(body(name).splitlines())
+    assert count < LIMIT, f"{name} có {count} dòng, phải dưới {LIMIT}"
+
+
+def test_03_no_forbidden_token():
+    hits = []
+    for path in sorted(STATIC.rglob("*")):
+        if path.is_file() and path.suffix in {".js", ".html"}:
+            text = path.read_text(encoding="utf-8")
+            hits += [f"{path.name}:{token}" for token in FORBID if token in text]
+    assert hits == [], f"cấm dùng: {hits}"
+
+
+def test_04_index_html_shape():
+    text = body("index.html")
+    for marker in ("react@18", "react-dom@18", "@mui/material@5", "Roboto", "Material+Symbols", "UNVERIFIED"):
+        assert marker in text, f"index.html thiếu {marker}"
+    for name in JS:
+        assert f'/static/{name}"' in text, f"index.html chưa nạp {name}"
+    assert 'type="module"' in text
+    assert text.index("js/main.js") > text.index("js/chat_view.js"), "sai thứ tự nạp"
+
+
+@pytest.mark.parametrize("name,markers", RULES, ids=[row[0] for row in RULES])
+def test_05_markers(name, markers):
+    text = body(name)
+    missing = [m for m in markers if not m.startswith("!") and m not in text]
+    banned = [m[1:] for m in markers if m.startswith("!") and m[1:] in text]
+    assert missing == [], f"{name} thiếu {missing}"
+    assert banned == [], f"{name} cấm {banned}"
+
+
+@pytest.mark.parametrize("name", VIEW)
+def test_06_component_uses_create_element(name):
+    assert "React.createElement" in body(name), name
+```
+
+### Step 2. GREEN cycle: `static/index.html`
+
+File to create: `static/index.html`.
+Function signature: no functions; this is the file that loads the UMD libraries in order.
+Outline algorithm: load the Roboto font and the Google Material Symbols Outlined icon font through Google Fonts links; place the `<div id="root">` element with a diacritic-bearing Vietnamese waiting message as the waiting state plus a `<noscript>` tag; load five UMD files with the `crossorigin` attribute; load the nine sub-files with `<script src>` in the B2 order; load `main.js` with `<script type="module">`; write the `UNVERIFIED` note right next to the CDN path block because no network check step runs in the prompt-building environment.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "index_html or required"`
+Expected result: `test_01[index.html]`, `test_02[index.html]`, `test_04_index_html_shape` green; `test_01[js/session_id.js]` still red; the file measures 37 lines, under the 100 threshold.
+
+```html
+<!-- index.html: nạp thư viện UMD theo thứ tự, không có bước dựng, không JSX. -->
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trò chuyện với trợ lý AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0" rel="stylesheet" />
+  <!-- UNVERIFIED: các đường dẫn CDN dưới đây chưa được thử trực tiếp trong môi trường dựng prompt, phải kiểm tay ở P7. -->
+  <style>
+    .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; font-feature-settings: 'liga'; }
+    body { margin: 0; background: #eceff1; }
+    #root { min-height: 100vh; font-family: Roboto, Arial, sans-serif; }
+    .boot { padding: 24px; line-height: 1.6; color: #37474f; }
+  </style>
+</head>
+<body>
+  <div id="root" class="boot">Đang tải giao diện, vui lòng chờ...</div>
+  <noscript>Trang này cần bật JavaScript mới chạy được.</noscript>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@mui/material@5.16.7/umd/material-ui.production.min.js"></script>
+  <script src="/static/js/session_id.js"></script>
+  <script src="/static/js/api_status.js"></script>
+  <script src="/static/js/api_setup.js"></script>
+  <script src="/static/js/api_chat.js"></script>
+  <script src="/static/js/api_reset.js"></script>
+  <script src="/static/js/message_bubble.js"></script>
+  <script src="/static/js/setup_dialog.js"></script>
+  <script src="/static/js/chat_view.js"></script>
+  <script src="/static/js/send_handler.js"></script>
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
+```
+
+### Step 3. RED then GREEN cycle: `static/js/session_id.js`
+
+File to create: `static/js/session_id.js`.
+Function signature: `getSessionId() -> string`, `isValidSessionId(value) -> boolean`; the two functions register into `window.Chatbot.sessionId`.
+Outline algorithm: IF reading browser storage inside a `try/catch` block that throws out THEN return `null`; IF the value read matches `^[A-Za-z0-9-]{8,64}$` THEN always return that value because two tabs must share one session id; ELSE IF `window.crypto.randomUUID` exists THEN generate the id with `randomUUID`; ELSE generate it from four concatenated base36 blocks; IF the generated id is still invalid THEN regenerate with the fallback; write the id into browser storage inside `try/catch` so that the blocked case does not break the page.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "session_id"`
+Expected result: `test_01[js/session_id.js]`, `test_02[js/session_id.js]`, `test_05[js/session_id.js]` green; the file measures 52 lines.
+
+```javascript
+// Mã phiên dùng chung cho mọi lượt gửi, theo B8. Không đụng khóa API.
+const CB = (window.Chatbot = window.Chatbot || {});
+const PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+
+function isValid(value) {
+  return typeof value === "string" && PATTERN.test(value);
+}
+
+function randomPart() {
+  return Math.floor(Math.random() * 0x100000000).toString(36).padStart(6, "0");
+}
+
+function fallbackId() {
+  return randomPart() + randomPart() + randomPart() + randomPart();
+}
+
+function readStored() {
+  try {
+    return window.localStorage.getItem("session_id");
+  } catch (err) {
+    return null;
+  }
+}
+
+function writeStored(value) {
+  try {
+    window.localStorage.setItem("session_id", value);
+  } catch (err) {
+    // Bộ nhớ trình duyệt bị chặn: mã phiên vẫn dùng được trong RAM của trang.
+  }
+}
+
+function newId() {
+  const hasUuid = window.crypto && typeof window.crypto.randomUUID === "function";
+  const created = hasUuid ? window.crypto.randomUUID() : fallbackId();
+  return isValid(created) ? created : fallbackId();
+}
+
+function getSessionId() {
+  const stored = readStored();
+  if (isValid(stored)) {
+    return stored;
+  }
+  const created = newId();
+  writeStored(created);
+  return created;
+}
+
+function isValidSessionId(value) {
+  return isValid(value);
+}
+
+CB.sessionId = { getSessionId: getSessionId, isValidSessionId: isValidSessionId };
+```
+
+### Step 4. RED then GREEN cycle: the four network call files
+
+Files to create: `static/js/api_status.js`, `static/js/api_setup.js`, `static/js/api_chat.js`, `static/js/api_reset.js`.
+Function signature: `apiStatus() -> Promise<{ok, status, data}>`, `apiSetup(apiKey) -> Promise<...>`, `apiChat(sessionId, message) -> Promise<...>`, `apiReset(sessionId) -> Promise<...>`.
+Common algorithm: a `try` block around `await fetch(...)` with `Accept: application/json`; the two POST files add `Content-Type: application/json` and a `JSON.stringify` body; `await response.json()` to read `data`; THEN return `{ok: response.ok, status: response.status, data: data}`; if `catch` any error at all, including a body that is not JSON THEN return `{ok: false, status: 0, data: {error: "network_error", message: "Không kết nối được máy chủ"}}` and do NOT rethrow outward.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "api_status or api_setup or api_chat or api_reset"`
+Expected result: eight tests red before, eight tests green after writing; `Select-String -Path static\js\*.js -Pattern 'innerHTML'` prints nothing; the four files measure 16, 17, 17 and 17 lines respectively.
+
+```javascript
+// Đọc trạng thái đã có khóa API chưa. Không ném lỗi ra ngoài.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+async function apiStatus() {
+  try {
+    const response = await fetch("/api/setup/status", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    const data = await response.json();
+    return { ok: response.ok, status: response.status, data: data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { error: "network_error", message: "Không kết nối được máy chủ" } };
+  }
+}
+
+CB.apiStatus = { apiStatus: apiStatus };
+```
+
+```javascript
+// Gửi khóa API lần đầu. Máy chủ trả {"ok": true} hoặc mã lỗi theo bảng B7.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+async function apiSetup(apiKey) {
+  try {
+    const response = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    const data = await response.json();
+    return { ok: response.ok, status: response.status, data: data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { error: "network_error", message: "Không kết nối được máy chủ" } };
+  }
+}
+
+CB.apiSetup = { apiSetup: apiSetup };
+```
+
+```javascript
+// Gửi một tin người dùng. Máy chủ tự đọc lịch sử trong bộ nhớ, client không gửi lịch sử.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+async function apiChat(sessionId, message) {
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ message: message, session_id: sessionId }),
+    });
+    const data = await response.json();
+    return { ok: response.ok, status: response.status, data: data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { error: "network_error", message: "Không kết nối được máy chủ" } };
+  }
+}
+
+CB.apiChat = { apiChat: apiChat };
+```
+
+```javascript
+// Xóa lịch sử của một phiên trên máy chủ.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+async function apiReset(sessionId) {
+  try {
+    const response = await fetch("/api/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    const data = await response.json();
+    return { ok: response.ok, status: response.status, data: data };
+  } catch (err) {
+    return { ok: false, status: 0, data: { error: "network_error", message: "Không kết nối được máy chủ" } };
+  }
+}
+
+CB.apiReset = { apiReset: apiReset };
+```
+
+### Step 5. RED then GREEN cycle: `static/js/message_bubble.js`
+
+File to create: `static/js/message_bubble.js`.
+Function signature: `MessageBubble(props) -> ReactElement` with `props.item` (an object holding `role` and `content`).
+Outline algorithm: read `MaterialUI` inside the function and not at module level, so that when the CDN fails to load the other files still load; IF `props.item.role` equals `"human"` THEN build a light-blue `Paper`, right aligned, accessibility label `Tin của bạn`; ELSE build a white `Paper`, left aligned, label `Câu trả lời của trợ lý`; inside is always `React.createElement(Typography, ..., tin.content)` so that the content is a CHILD STRING and React escapes the characters itself; do NOT use a raw string write mechanism, do NOT hand-draw SVG, do NOT use emoji.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "message_bubble"`
+Expected result: `test_05[js/message_bubble.js]` and `test_06[js/message_bubble.js]` green; the file measures 32 lines.
+
+```javascript
+// Bong bóng một tin. Nội dung luôn là chuỗi con nên React tự thoát ký tự.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+function MessageBubble(props) {
+  const { Paper, Typography } = MaterialUI;
+  const tin = props.item;
+  const fromHuman = tin.role === "human";
+  const label = fromHuman ? "Tin của bạn" : "Câu trả lời của trợ lý";
+  return React.createElement(
+    Paper,
+    {
+      elevation: fromHuman ? 3 : 1,
+      "aria-label": label,
+      sx: {
+        p: 1.5,
+        m: 1,
+        maxWidth: "75%",
+        alignSelf: fromHuman ? "flex-end" : "flex-start",
+        backgroundColor: fromHuman ? "#bbdefb" : "#ffffff",
+      },
+    },
+    React.createElement(
+      Typography,
+      {
+        variant: "body1",
+        component: "div",
+        sx: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", wordBreak: "break-word" },
+      },
+      tin.content
+    )
+  );
+}
+
+CB.messageBubble = { MessageBubble: MessageBubble };
+```
+
+### Step 6. RED then GREEN cycle: `static/js/setup_dialog.js`
+
+File to create: `static/js/setup_dialog.js`.
+Function signature: `SetupDialog(props) -> ReactElement` with `props.open`, `props.error`, `props.onSubmit(apiKey) -> Promise<{ok, message}>`.
+Outline algorithm: local state `value`, `busy`, `error`; `useEffect` on `[props.open, props.error]` THEN clear the key field and reload the error message; the function `submit()` if `busy` is on THEN exit early, turn on `busy`, clear `error`, `await props.onSubmit(value)` inside `try/catch`, and in `catch` return the message `Không kết nối được máy chủ`; after a result exists THEN clear the key field with `setValue("")`, turn off `busy`, and if the result is not ok THEN set `error`; build a `Dialog` containing a `TextField type: "password"` with an `aria-label`, an `Alert severity: "error"` when there is an error, a `Lưu` button that is `disabled` when `busy`, and an `Xóa` button to clear the field; do NOT read or write browser storage, do NOT read or write session storage.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "setup_dialog"`
+Expected result: `test_05[js/setup_dialog.js]` green, and at the same time both negative rules in that same test green; the file measures 73 lines.
+
+```javascript
+// Hộp thoại nhập khóa API. Khóa chỉ sống trong trạng thái rồi đưa thẳng lên máy chủ.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+function SetupDialog(props) {
+  const { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert, Typography } = MaterialUI;
+  const [value, setValue] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    setValue("");
+    setError(props.error || "");
+  }, [props.open, props.error]);
+
+  async function submit() {
+    if (busy) {
+      return false;
+    }
+    setBusy(true);
+    setError("");
+    let result = { ok: false, message: "Chưa nhận được phản hồi từ máy chủ" };
+    try {
+      result = await props.onSubmit(value);
+    } catch (err) {
+      result = { ok: false, message: "Không kết nối được máy chủ" };
+    }
+    setValue("");
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.message);
+    }
+    return result.ok === true;
+  }
+
+  return React.createElement(
+    Dialog,
+    { open: props.open === true, fullWidth: true, maxWidth: "sm", "aria-labelledby": "setup-dialog-title" },
+    React.createElement(DialogTitle, { id: "setup-dialog-title" }, "Nhập khóa API"),
+    React.createElement(
+      DialogContent,
+      null,
+      React.createElement(Typography, { variant: "body2", sx: { mb: 2 } },
+        "Dán khóa API rồi bấm Lưu. Khóa được gửi thẳng lên máy chủ của bạn và không được giữ trong trình duyệt."),
+      error ? React.createElement(Alert, { severity: "error", sx: { mb: 2 } }, error) : null,
+      React.createElement(TextField, {
+        autoFocus: true,
+        fullWidth: true,
+        type: "password",
+        label: "Khóa API",
+        "aria-label": "Khóa API",
+        value: value,
+        disabled: busy,
+        onChange: (event) => setValue(event.target.value),
+        onKeyDown: (event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submit();
+          }
+        },
+      })
+    ),
+    React.createElement(
+      DialogActions,
+      null,
+      React.createElement(Button,
+        { disabled: busy, "aria-label": "Xóa khóa đã nhập", onClick: () => setValue("") }, "Xóa"),
+      React.createElement(Button,
+        { variant: "contained", disabled: busy, "aria-label": "Lưu khóa API", onClick: submit },
+        busy ? "Đang lưu..." : "Lưu")
+    )
+  );
+}
+
+CB.setupDialog = { SetupDialog: SetupDialog };
+```
+
+### Step 7. RED then GREEN cycle: `static/js/chat_view.js`
+
+File to create: `static/js/chat_view.js`.
+Function signature: `ChatView(props) -> ReactElement` with `props.messages`, `props.draft`, `props.busy`, `props.error`, `props.onDraftChange(text)`, `props.onSend(text)`, `props.onReset()`; helper function `icon(name, label)`.
+Outline algorithm: `useEffect` on `[props.messages.length]` THEN if the anchor point exists THEN call `scrollIntoView` down to the end of the list; FOR each message in `props.messages` THEN build a `MessageBubble` with `key` being the index; `onKeyDown` if `event.key !== "Enter"` OR `event.shiftKey` THEN return early, otherwise `preventDefault` and then send; `submit()` if the draft is empty OR `props.busy` is on THEN return, otherwise call `props.onSend`; the input and the Send button are `disabled` when `props.busy`; icons come from the MUI `Icon` component with the Google icon name and the `Material Symbols Outlined` font.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "chat_view"`
+Expected result: `test_05[js/chat_view.js]` and `test_06[js/chat_view.js]` green; the file measures 69 lines, under the 100 threshold.
+
+```javascript
+// Khung chat: thanh trên, danh sách tin, ô nhập, nút Gửi và nút Cuộc trò chuyện mới.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+function icon(name, label) {
+  return React.createElement(MaterialUI.Icon,
+    { baseClassName: "material-symbols-outlined", "aria-label": label, sx: { fontSize: 22 } },
+    name);
+}
+
+function ChatView(props) {
+  const { AppBar, Toolbar, Typography, Box, Paper, TextField, IconButton, Button, Alert } = MaterialUI;
+  const bottom = React.useRef(null);
+
+  React.useEffect(() => {
+    if (bottom.current) {
+      bottom.current.scrollIntoView({ block: "end" });
+    }
+  }, [props.messages.length]);
+
+  function submit() {
+    const text = props.draft.trim();
+    if (text === "" || props.busy) {
+      return false;
+    }
+    props.onSend(text);
+    return true;
+  }
+
+  function onKeyDown(event) {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return false;
+    }
+    event.preventDefault();
+    return submit();
+  }
+
+  const bubbles = props.messages.map((item, index) => React.createElement(
+    CB.messageBubble.MessageBubble,
+    { key: index, item: item }));
+
+  const composer = React.createElement(Paper,
+    { elevation: 3, sx: { p: 1, display: "flex", gap: 1, alignItems: "flex-end" } },
+    React.createElement(TextField, {
+      fullWidth: true, multiline: true, maxRows: 6, label: "Tin nhắn", "aria-label": "Tin nhắn",
+      value: props.draft, disabled: props.busy,
+      onChange: (event) => props.onDraftChange(event.target.value),
+      onKeyDown: onKeyDown,
+    }),
+    React.createElement(IconButton,
+      { color: "primary", disabled: props.busy, "aria-label": "Gửi tin", onClick: submit },
+      icon("send", "Gửi tin")));
+
+  return React.createElement(Box,
+    { sx: { maxWidth: 900, mx: "auto", minHeight: "100vh", display: "flex", flexDirection: "column" } },
+    React.createElement(AppBar, { position: "static", color: "primary" },
+      React.createElement(Toolbar, { variant: "regular" },
+        icon("smart_toy", "Biểu tượng trợ lý"),
+        React.createElement(Typography, { variant: "h6", sx: { ml: 1, flexGrow: 1 } }, "Trợ lý trò chuyện"),
+        React.createElement(Button,
+          { color: "inherit", disabled: props.busy, "aria-label": "Cuộc trò chuyện mới", onClick: props.onReset },
+          icon("delete_sweep", "Xóa lịch sử"), "Cuộc trò chuyện mới"))),
+    React.createElement(Box,
+      { component: "main", sx: { flexGrow: 1, p: 2, display: "flex", flexDirection: "column" } },
+      bubbles,
+      props.error ? React.createElement(Alert, { severity: "error", sx: { mt: 1 } }, props.error) : null,
+      React.createElement("div", { ref: bottom })),
+    composer);
+}
+
+CB.chatView = { ChatView: ChatView };
+```
+
+### Step 8. RED then GREEN cycle: `static/js/send_handler.js`
+
+File to create: `static/js/send_handler.js`.
+Function signature: `sendMessage(options) -> Promise<bool>` and `resetConversation(options) -> Promise<bool>`; `options` consists of `sessionId`, `text`, `append(item)`, `clear()`, `setBusy(flag)`, `setError(text)`, `onRequireKey(text)`.
+Outline algorithm: the module variable `sending` acts as a flag that prevents sending twice; IF `sending` is on OR the draft is empty THEN return `false`; turn on `sending`, turn on `busy`, clear the old error, put the human message into the frame immediately so the response is instant; `await apiChat` inside `try`; IF `status` equals 0 THEN set the network error; ELSE if not ok: code 409 THEN `onRequireKey("Chưa có khóa API, hãy nhập khóa rồi thử lại")`, code 401 THEN `onRequireKey("Khóa API không đúng, nhập lại")`, otherwise THEN set `data.message`; ELSE put the AI message into the frame and return `true`; `finally` turns off `sending` and `busy` regardless of the result. `resetConversation` calls `apiReset` then `clear()` on success.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py -k "send_handler"`
+Expected result: `test_05[js/send_handler.js]` green, and the three markers `409`, `401`, `onRequireKey` each appear exactly once in the code; the file measures 53 lines.
+
+```javascript
+// Gửi tin và xóa lịch sử. Chặn bấm Gửi hai lần bằng cờ sending ở cấp mô đun.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+let sending = false;
+
+async function sendMessage(options) {
+  if (sending || options.text.trim() === "") {
+    return false;
+  }
+  sending = true;
+  options.setBusy(true);
+  options.setError("");
+  options.append({ role: "human", content: options.text.trim() });
+  try {
+    const result = await CB.apiChat.apiChat(options.sessionId, options.text.trim());
+    if (result.status === 0) {
+      options.setError(result.data.message);
+      return false;
+    }
+    if (!result.ok) {
+      if (result.status === 409) {
+        options.onRequireKey("Chưa có khóa API, hãy nhập khóa rồi thử lại");
+        return false;
+      }
+      if (result.status === 401) {
+        options.onRequireKey("Khóa API không đúng, nhập lại");
+        return false;
+      }
+      options.setError(result.data.message || "Không nhận được câu trả lời");
+      return false;
+    }
+    options.append({ role: "ai", content: result.data.reply });
+    return true;
+  } finally {
+    sending = false;
+    options.setBusy(false);
+  }
+}
+
+async function resetConversation(options) {
+  const result = await CB.apiReset.apiReset(options.sessionId);
+  if (result.status === 0) {
+    options.setError(result.data.message);
+    return false;
+  }
+  if (!result.ok) {
+    options.setError(result.data.message || "Không xóa được lịch sử");
+    return false;
+  }
+  options.clear();
+  return true;
+}
+
+CB.send = { sendMessage: sendMessage, resetConversation: resetConversation };
+```
+
+### Step 9. RED then GREEN cycle: `static/js/main.js`
+
+File to create: `static/js/main.js`.
+Function signature: `App() -> ReactElement`, `showFatal(text) -> void`, and the initialization block calling `ReactDOM.createRoot`.
+Outline algorithm: IF `React`, `ReactDOM` or `MaterialUI` is not yet present THEN `showFatal` with a Vietnamese message that states clearly which CDN path is failing to load and suggests reopening the page once there is network, because the UI cannot be built; ELSE initialize the `phase` state consisting of `boot`, `needKey`, `ready`, `broken`; `useEffect` once THEN call `apiStatus`; IF `status` equals 0 OR not ok THEN `phase = "broken"` and keep the error message; ELSE `phase = configured === true ? "ready" : "needKey"`; `saveKey` calls `apiSetup` then when ok moves `phase` to `ready`; `send` calls `sendMessage` and only clears the draft when the send returns `true`; `reset` calls `resetConversation`; build `SetupDialog` with `open = (phase === "needKey")` and build `ChatView` below it.
+PowerShell check command: `py -m pytest -q tests/test_static_rules.py`
+Expected result: all tests of `test_static_rules.py` green; `py -m pytest -q` for the whole project still green; the file measures 83 lines.
+
+```javascript
+// Điểm vào: kiểm thư viện đã nạp, hỏi trạng thái khóa, rồi chọn hộp thoại hay khung chat.
+const CB = (window.Chatbot = window.Chatbot || {});
+
+function showFatal(text) {
+  document.getElementById("root").textContent = text;
+}
+
+function App() {
+  const [phase, setPhase] = React.useState("boot");
+  const [messages, setMessages] = React.useState([]);
+  const [draft, setDraft] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [keyError, setKeyError] = React.useState("");
+  const [error, setError] = React.useState("");
+  const append = (item) => setMessages((old) => old.concat([item]));
+
+  React.useEffect(() => {
+    start();
+  }, []);
+
+  async function start() {
+    const r = await CB.apiStatus.apiStatus();
+    if (r.status === 0 || !r.ok) {
+      setError(r.status === 0
+        ? r.data.message + ", hãy kiểm tra máy chủ đã chạy chưa."
+        : "Máy chủ trả lỗi " + r.status + " khi hỏi trạng thái khóa.");
+      setPhase("broken");
+      return;
+    }
+    setError("");
+    setPhase(r.data.configured === true ? "ready" : "needKey");
+  }
+
+  async function saveKey(apiKey) {
+    const r = await CB.apiSetup.apiSetup(apiKey);
+    if (!r.ok) {
+      return { ok: false, message: r.data.message || "Không lưu được khóa API" };
+    }
+    setKeyError("");
+    setPhase("ready");
+    return { ok: true };
+  }
+
+  async function send(text) {
+    const done = await CB.send.sendMessage({
+      sessionId: CB.sessionId.getSessionId(), text: text, append: append,
+      setBusy: setBusy, setError: setError,
+      onRequireKey: (msg) => { setKeyError(msg); setPhase("needKey"); },
+    });
+    if (done) {
+      setDraft("");
+    }
+  }
+
+  async function reset() {
+    await CB.send.resetConversation({
+      sessionId: CB.sessionId.getSessionId(),
+      clear: () => setMessages([]),
+      setError: setError,
+    });
+  }
+
+  if (phase === "boot") {
+    return React.createElement("p", { className: "boot" }, "Đang kiểm tra cấu hình, vui lòng chờ...");
+  }
+  if (phase === "broken") {
+    return React.createElement(React.Fragment, null,
+      React.createElement(MaterialUI.Alert, { severity: "warning", sx: { mb: 2 } }, error),
+      React.createElement(MaterialUI.Button, { variant: "contained", onClick: start }, "Thử lại"));
+  }
+  return React.createElement(React.Fragment, null,
+    React.createElement(CB.setupDialog.SetupDialog,
+      { open: phase === "needKey", error: keyError, onSubmit: saveKey }),
+    React.createElement(CB.chatView.ChatView, {
+      messages: messages, draft: draft, busy: busy, error: error,
+      onDraftChange: setDraft, onSend: send, onReset: reset,
+    }));
+}
+
+if (window.React && window.ReactDOM && window.MaterialUI) {
+  ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+} else {
+  showFatal("Không nạp được thư viện giao diện từ CDN. Hãy kiểm tra mạng hoặc tường lửa, rồi tải lại trang.");
+}
+```
+
+### Step 10. REFACTOR cycle and manual testing in the browser
+
+Files to create: no new files; only shorten blank lines and merge blocks so that each file stays under 90 lines.
+Algorithm: FOR each file in `static/` THEN remove consecutive blank blocks; FOR each file THEN recount the lines; do NOT change behaviour, do NOT add helper files, do NOT merge two public functions into one file.
+PowerShell check command: `py -m pytest -q` then `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` must print nothing.
+Expected result: all tests green; the line-count command prints no file name; the line counts after the refactor cycle are 37 for `index.html`, 52 for `session_id.js`, 16, 17, 17, 17 for the four network call files, 32 for `message_bubble.js`, 73 for `setup_dialog.js`, 69 for `chat_view.js`, 53 for `send_handler.js`, 83 for `main.js`, 76 for `tests/test_static_rules.py`.
+
+Manual test scenarios, in exactly this order:
+1. Run `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3` then `Invoke-RestMethod http://127.0.0.1:2610/api/health` must return `ok`.
+2. Delete the `OPENAI_API_KEY` line in `.env`, open the browser at `http://127.0.0.1:2610`, you must see the `Nhập khóa API` dialog blocking the whole screen.
+3. Paste `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`, click `Lưu`, the dialog closes, the chat frame appears, without a page reload.
+4. Send `Tên em là Lan`, receive exactly one reply message, it scrolls down to the end by itself.
+5. Press `Enter` to send, `Shift+Enter` to insert a newline, click `Gửi` twice in a row and only one send round is created.
+6. Paste text with an HTML tag such as `<script>alert(1)</script>` plus Vietnamese text with diacritics and an emoji, the screen must show it verbatim, with no alert dialog appearing.
+7. Create a message longer than 4000 characters, click `Gửi`, you must see the `invalid_message` notification in Vietnamese, the page does not die, and the draft is still there for editing.
+8. Click `Cuộc trò chuyện mới`, the message list in the frame is cleared and the server side is cleared too.
+9. Open a second tab with the same session id, use a different key, send a message and receive code 401, then the dialog must reopen with the message `Khóa API không đúng, nhập lại`.
+10. Delete the key in the `.env` file then send a message from the open tab, receive code 409, then the dialog must reopen with the message `Chưa có khóa API, hãy nhập khóa rồi thử lại`.
+11. Shut down the server then reload the page, you must see the cannot-connect-to-server message together with a `Thử lại` button; restart the server then click `Thử lại` and you enter the chat frame without a page reload.
+12. Check with `Ctrl+Shift+I`, Application tab, that browser storage only holds the `session_id` key, no API key; the key field is empty after clicking `Lưu`.
+13. Shrink the window to 800 px, the layout does not break, the buttons and input remain usable.
+14. Use the Tab key to walk through all buttons and inputs, each step must read out a Vietnamese accessibility label.
+15. If the CDN is blocked, the page must show a Vietnamese message naming the CDN path that is failing to load; record this result in the manual test section of P7 to replace the `UNVERIFIED` marker.
+
+## 3d. Decision table
+
+Table 1. Decisions at the network call layer and the send layer, using exactly these symbols: the output is observable behaviour.
+
+| input condition | output | error code or exception |
+|---|---|---|
+| `apiStatus()` returns `ok` and `configured` equal to `true` | goes straight to `chat_view`, no dialog opens | none |
+| `apiStatus()` returns `ok` and `configured` equal to `false` | opens `setup_dialog` with `open = true` | none |
+| `apiStatus()` returns `status` equal to `0` | shows a warning `Alert` with a `Thử lại` button, `phase = "broken"` | `network_error` |
+| `apiStatus()` returns `ok` equal to `false` | shows an `Alert` naming the status code, `phase = "broken"` | code returned by the server |
+| `apiSetup(key)` returns `ok` equal to `true` | clears the key field, closes the dialog, `phase = "ready"` | none |
+| `apiSetup(key)` returns `status` equal to `0` | dialog stays as is, shows the network error `Alert` | `network_error` |
+| `apiSetup(key)` returns code 400 | shows the server's Vietnamese message in the `Alert` | `invalid_api_key` |
+| `apiSetup(key)` returns code 403 | shows the notice that calls from another machine are forbidden | `forbidden` |
+| `apiSetup(key)` returns code 500 | shows the notice that the key could not be saved | `save_failed` |
+| `apiChat` returns `ok` equal to `true` | adds the AI message to the frame, clears the draft | none |
+| `apiChat` returns `status` equal to `0` | shows the network error `Alert` in the chat frame, keeps the human message | `network_error` |
+| `apiChat` returns code 409 | calls `onRequireKey`, reopens the API key dialog | `api_key_missing` |
+| `apiChat` returns code 401 | reopens the dialog with the message `Khóa API không đúng, nhập lại` | code 401 from the infrastructure layer |
+| `apiChat` returns code 400 and `error` is `invalid_message` | shows the message length notice, keeps the draft | `invalid_message` |
+| `apiChat` returns code 400 and `error` is `invalid_session` | shows the session id notice, suggests opening a new tab | `invalid_session` |
+| `apiChat` returns code 502 and `error` is `empty_reply` | shows the notice that the model returned nothing | `empty_reply` |
+| `apiChat` returns code 502, 503, 504 | shows the notice for lost connection, overload or excessive slowness | code from `map_openai_error` |
+| `apiChat` returns code 415 | shows the notice that the request body format is wrong | `unsupported_media_type` |
+| `apiReset` returns `ok` equal to `true` | deletes all messages in the chat frame | none |
+| `apiReset` returns `ok` equal to `false` | keeps the chat frame as is, shows the error message | code returned by the server |
+| the user presses `Enter` in the input | sends the message, no newline | none |
+| the user presses `Shift+Enter` | only inserts a newline, does NOT send | none |
+| the user presses `Enter` in the key field | sends the key to the server, no newline | none |
+| the draft contains only whitespace | `submit()` returns `false`, does not call `fetch` | `invalid_message` |
+| the user clicks `Gửi` twice in a row | the second time is blocked by `sending`, only one send round | none |
+| the user clicks `Lưu` twice in a row | the second time is blocked by `busy`, only one `/api/setup` request | none |
+| two tabs with the same session id, server has no key | both tabs receive 409 and open their own dialog | `api_key_missing` |
+
+Table 2. Decisions at the presentation and page-building layer, using exactly these symbols: the input condition is an observable state.
+
+| input condition | output | error code or exception |
+|---|---|---|
+| `window.React`, `window.ReactDOM`, `window.MaterialUI` all present | `createRoot` builds `App` | none |
+| one of the three variables above is missing | `showFatal` writes the Vietnamese message with `textContent` and names the failing CDN path | `library_unavailable` |
+| `props.open` equal to `true` | `Dialog` blocks the whole screen, `TextField` takes focus automatically | none |
+| `props.open` equal to `false` | the dialog disappears, the chat frame accepts interaction | none |
+| the user is sending, that is `busy` equal to `true` | key field and `Lưu` button are `disabled`, the button label becomes `Đang lưu...` | none |
+| `props.onSubmit` returns `ok` equal to `true` | clears the key field with `setValue("")`, closes the dialog | none |
+| `props.onSubmit` throws an exception | `catch` sets the message `Không kết nối được máy chủ` | exception swallowed |
+| `props.error` is non-empty | shows `Alert severity: "error"` with diacritic-bearing text | none |
+| browser storage returns a valid `session_id` | reuses exactly that id, the two tabs share the session | none |
+| browser storage is blocked | `catch` returns `null`, generates the id in RAM, the page still runs | `SecurityError` swallowed |
+| `crypto.randomUUID` missing | generates the fallback id from four base36 blocks | none |
+| `props.messages` grows by one element | `useEffect` calls `scrollIntoView` down to the end | none |
+| `props.messages` contains an HTML tag such as `<script>` | `Typography` receives a child string so it shows verbatim, no execution | none |
+| Vietnamese text with diacritics plus an emoji | the correct diacritics and the correct emoji show thanks to the Roboto font | none |
+| a long multi-line message without spaces | the bubble wraps at every character, `maxWidth` keeps it inside the frame | none |
+
+## ERR
+
+ERR.1 Symptom: blank page, only the line `Đang tải giao diện, vui lòng chờ...` remains. Cause: the CDN is blocked by a corporate firewall or the network is down, so `window.React` or `window.MaterialUI` is missing. Fix: the `else` branch of `main.js` calls `showFatal`, using `textContent` to write a Vietnamese message that clearly names the CDN path that is failing to load and suggests reloading the page; do NOT redraw the UI yourself. Related files: `static/index.html`, `static/js/main.js`.
+
+ERR.2 Symptom: `main.js` runs before `window.Chatbot` has all its functions, so `CB.sessionId` is `undefined`. Cause: wrong order of the `script` tags in `index.html`. Fix: it is mandatory to load the nine sub-files first and `main.js` after; `test_04_index_html_shape` checks this order by comparing string positions. Related files: `static/index.html`, `tests/test_static_rules.py`.
+
+ERR.3 Symptom: every page reload generates a new session id and the previous history disappears. Cause: `getSessionId` returns `null` from `readStored` because the key is stored under the wrong name. Fix: use exactly one key name constant `session_id` for both reading and writing. Related file: `static/js/session_id.js`.
+
+ERR.4 Symptom: the session id does not match `^[A-Za-z0-9-]{8,64}$` so the server returns `invalid_session`. Cause: `crypto.randomUUID` is unavailable because the page is open in an insecure context, and the fallback generates a string that is too short. Fix: if the generated id is invalid then regenerate with `fallbackId`; re-check with `isValid` before returning. Related file: `static/js/session_id.js`.
+
+ERR.5 Symptom: `fetch` throws `TypeError` and the dialog reports a network error although the server is still running. Cause: the server is off or the port is wrong. Fix: every network call file wraps `try/catch` and returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`; `main.js` switches to `phase = "broken"` with a `Thử lại` button. Related files: `static/js/api_status.js`, `static/js/api_chat.js`, `static/js/main.js`.
+
+ERR.6 Symptom: a network error makes the page jump back to the API key dialog even though a key exists. Cause: the dialog-opening condition relies on `status` instead of on `configured`. Fix: set `phase = "needKey"` only when `apiStatus` returns `ok` and `configured` equal to `false`, or when `apiChat` returns 409 or 401. Related file: `static/js/main.js`.
+
+ERR.7 Symptom: the API key appears in browser storage after saving. Cause: the key state is written down to the page's temporary storage. Fix: the key lives only in `useState` and goes straight into `fetch`; the two negative markers `localStorage` and `sessionStorage` in `test_05` block the regression. Related files: `static/js/setup_dialog.js`, `tests/test_static_rules.py`.
+
+ERR.8 Symptom: after clicking `Lưu`, the key field still holds the old characters. Cause: the clearing command after obtaining a result is missing. Fix: call `setValue("")` right after the `try/catch` block and also in the `useEffect` on `[props.open, props.error]`; the marker `setValue("")` is mandatory in the test. Related file: `static/js/setup_dialog.js`.
+
+ERR.9 Symptom: clicking `Lưu` many times creates many `/api/setup` requests. Cause: there is no in-flight blocking flag. Fix: `submit()` exits early if `busy` is on, together with `disabled: busy` on the `Lưu` button and on the input. Related file: `static/js/setup_dialog.js`.
+
+ERR.10 Symptom: typing two messages in quick succession shows two human messages in the chat frame but only one AI message. Cause: each round overwrites the list instead of appending. Fix: use the functional update `setMessages((old) => old.concat([item]))`; the `sending` flag blocks two overlapping rounds. Related files: `static/js/main.js`, `static/js/send_handler.js`.
+
+ERR.11 Symptom: clicking `Gửi` twice creates two `/api/chat` requests. Cause: React's `busy` state has not updated in time between the two clicks in the same beat. Fix: the module-level `sending` flag is checked before anything else; the marker `sending` in the test. Related file: `static/js/send_handler.js`.
+
+ERR.12 Symptom: pressing `Shift+Enter` also sends the message. Cause: `event.shiftKey` is not checked. Fix: the condition `if (event.key !== "Enter" || event.shiftKey) return false;` is mandatory in `chat_view.js`; in the dialog use `event.key === "Enter" && !event.shiftKey` before sending. Related files: `static/js/chat_view.js`, `static/js/setup_dialog.js`.
+
+ERR.13 Symptom: pressing `Enter` in the input makes the page scroll or create a new line instead of sending. Cause: `event.preventDefault()` is missing. Fix: call `preventDefault` before sending in both files. Related files: `static/js/chat_view.js`, `static/js/setup_dialog.js`.
+
+ERR.14 Symptom: the chat frame does not scroll down by itself to the new message. Cause: `useEffect` does not depend on the list length, or the anchor point is not attached. Fix: `React.useEffect(..., [props.messages.length])` and call `scrollIntoView` on the anchor element that has the `ref`; the marker `scrollIntoView` is mandatory in the test. Related file: `static/js/chat_view.js`.
+
+ERR.15 Symptom: a message containing an HTML tag such as `<script>` becomes a real element or the text loses its diacritics. Cause: the content passes through a raw string write mechanism. Fix: the content is always a CHILD STRING of `Typography`, that is `item.content`; do NOT use a raw string write mechanism in any file; `test_03` scans all of `static/` and returns the token list on detection. Related files: `static/js/message_bubble.js`, `tests/test_static_rules.py`.
+
+ERR.16 Symptom: a long message makes the frame break horizontally or overflow outside. Cause: word breaking is not allowed. Fix: set `whiteSpace: "pre-wrap"`, `overflowWrap: "anywhere"`, `wordBreak: "break-word"` and `maxWidth: "75%"` on the bubble. Related file: `static/js/message_bubble.js`.
+
+ERR.17 Symptom: a message over 4000 characters is rejected by the server and the user thinks the page has hung. Cause: there is no client-side check. Fix: display exactly the `data.message` of code 400 `invalid_message` in the chat frame's `Alert` and keep the human message for editing. Related files: `static/js/send_handler.js`, `static/js/chat_view.js`.
+
+ERR.18 Symptom: a malformed key is called over and over with no response. Cause: the server's `data.message` is not read. Fix: every `!result.ok` branch takes `result.data.message` and then passes it to `onRequireKey` or `setError`. Related files: `static/js/send_handler.js`, `static/js/main.js`.
+
+ERR.19 Symptom: a well-formed key is rejected by the model service on the first chat round and the dialog does not reopen. Cause: the 401 branch is missing. Fix: when `result.status === 401` call `onRequireKey("Khóa API không đúng, nhập lại")`; the marker `401` is mandatory in the test. Related file: `static/js/send_handler.js`.
+
+ERR.20 Symptom: two tabs share one session and the second tab sends a message before it has configured itself. Cause: the key state lives separately in each tab, and the server is the source of truth. Fix: let the server return 409 and have the UI reopen the dialog; do not synchronize the key between tabs through browser storage. Related files: `static/js/send_handler.js`, `static/js/setup_dialog.js`.
+
+ERR.21 Symptom: the model is too slow and the user thinks the Send button is dead. Cause: there is no waiting state. Fix: keep `busy` on from the moment of sending until `finally` runs; the corresponding button label `Đang lưu...` in the dialog and `disabled` on the `Gửi` button. Related files: `static/js/send_handler.js`, `static/js/chat_view.js`.
+
+ERR.22 Symptom: the model returns an empty string and the chat frame shows nothing. Cause: the server returns code 502 with `error` being `empty_reply`. Fix: fall into the `!result.ok` branch and show the `Alert` with the server's message. Related files: `static/js/send_handler.js`, `static/js/chat_view.js`.
+
+ERR.23 Symptom: the dialog does not close even though the server has received the key. Cause: `main.js` does not change `phase` to `ready`. Fix: in `saveKey`, when the result is `ok` then `setKeyError("")` and `setPhase("ready")`; no page reload is needed. Related file: `static/js/main.js`.
+
+ERR.24 Symptom: the icon shows up as the word `send` instead of a picture. Cause: the Material Symbols Outlined font has not finished loading or is blocked. Fix: keep the font link in `index.html`, set `baseClassName: "material-symbols-outlined"` on the MUI `Icon` component and define the CSS rule for that class in `index.html` (MUI v5 ignores a `fontFamily` prop on `Icon`); if the font breaks the button still has an `aria-label` for keyboard and screen reader use. Related files: `static/index.html`, `static/js/chat_view.js`.
+
+ERR.25 Symptom: the layout breaks at a narrow window of 800 px. Cause: fixed width. Fix: wrap the content in `maxWidth: 900` and `mx: "auto"`, the input `fullWidth`, the bubble `maxWidth: "75%"`. Related files: `static/js/chat_view.js`, `static/js/message_bubble.js`.
+
+ERR.26 Symptom: the UI cannot be used with a keyboard or a screen reader. Cause: buttons and inputs lack labels. Fix: every button and input has an `aria-label`, the key field has `type: "password"`; the marker `aria-label` is mandatory in the test. Related files: `static/js/chat_view.js`, `static/js/setup_dialog.js`.
+
+ERR.27 Symptom: `py -m pytest -q` reports a static file over 100 lines. Cause: too many responsibilities crammed into one file. Fix: split exactly per the B2 list, remove blank lines, re-check with the line-count command from B11. Related files: all of `static/`, `tests/test_static_rules.py`.
+
+ERR.28 Symptom: `/api/setup` returns 403 when the page is opened through a proxy or a non-loopback address. Cause: `require_localhost` blocks exactly by design. Fix: show the Vietnamese message in the dialog and suggest opening with `http://127.0.0.1:2610`; do NOT loosen `require_localhost` on the UI side. Related files: `static/js/setup_dialog.js`, `static/index.html`.
+
+ERR.29 Symptom: a request body over 16 KB makes the server return 415 or 413. Cause: the server's `MAX_CONTENT_LENGTH`. Fix: show the server's message; the UI side does not truncate messages by itself because the user's entered content must be preserved exactly. Related files: `static/js/api_chat.js`, `static/js/send_handler.js`.
+
+ERR.30 Symptom: Vietnamese text with diacritics and emoji show a font error. Cause: the Roboto font is missing or the file was fetched with the wrong encoding. Fix: keep the font link in `index.html` and declare `font-family: Roboto, Arial, sans-serif` for the root element. Related file: `static/index.html`.
+
+ERR.31 Symptom: the dialog reports a network error while the server's response body is broken JSON. Cause: `await response.json()` throws when the body is not a JSON object, for example when a busy port returns its default error page. Fix: keep the `try/catch` layer around both the call and the JSON read, return `status` equal to 0 with the message `Không kết nối được máy chủ`, and do not push the error out of the file. Related files: `static/js/api_status.js`, `static/js/api_setup.js`, `static/js/api_chat.js`, `static/js/api_reset.js`.
+
+ERR.32 Symptom: clicking `Thử lại` on the broken screen leaves the state as `broken` although the server is running again. Cause: `start` does not clear the old message before calling again, or `useEffect` runs only once so there is no path back to `ready`. Fix: the `Thử lại` button calls exactly `start`; inside `start` set `setError("")` when the call succeeds and only then change `phase`, so the user does not have to reload the page. Related file: `static/js/main.js`.
+
+ERR.33 Symptom: a browser in private mode blocks browser storage and the page reports an error right after loading. Cause: `localStorage.getItem` throws at browser level, this is not a network error. Fix: both `readStored` and `writeStored` wrap `try/catch` and return `null` when blocked; the session id generated in the page's RAM is still usable for the current send round. Related file: `static/js/session_id.js`.
+
+ERR.34 Symptom: a failed send round loses the draft the user just typed. Cause: `draft` is cleared right after calling the send round regardless of the result. Fix: call `setDraft("")` only when `sendMessage` returns `true`; the error branch keeps the draft for editing and resending. Related files: `static/js/main.js`, `static/js/send_handler.js`.
+
+ERR.35 Symptom: two tabs with the same session id click `Gửi` almost at the same time, the server receives two rounds and the history gets interleaved. Cause: the `sending` flag only works within one tab; the server does not lock per session per B5. Fix: record the phenomenon in the manual test scenarios and do not change server code within the scope of P7; if P9 wants to block it then the decision must be made at the application layer rather than by adding a lock in the UI. Related file: `static/js/send_handler.js`.
+
+ERR.36 Symptom: after successful manual testing on the learner's machine, the file `index.html` still contains the `UNVERIFIED` note. Cause: the prompt-building procedure has no label-retirement step after manual testing. Fix: in manual test scenario 15, write the real result into the P7 report and only then replace the note with a verification line carrying the date and the browser name; never delete the marker unless the CDN really loaded. Related files: `static/index.html`, `tests/test_static_rules.py`.
+
+## KILL
+
+KILL.1 Stop immediately and report if the API key appears in any file other than `.env`, in the browser log, in `memory.json`, in a response or in an error message. Do not continue building more files until you can prove there is no longer any place the key leaks.
+
+KILL.2 Stop immediately and report if a raw string write mechanism, `document.write`, `eval` or `require` must be used in `static/`. The only allowed way to display string content is as a child string of a React element.
+
+KILL.3 Stop immediately and report if any file in `static/` or `tests/` exceeds 100 lines and cannot be split without breaking the one-function-per-file rule. Report the file name and line count instead of cutting functions.
+
+KILL.4 Stop immediately and report if the need arises to create files outside the B2 directory tree, including a helper file shared by the four network call files or a type declaration file. The correct solution is to repeat the short `try/catch` block in each file.
+
+KILL.5 Stop immediately and report if the server must restart after saving the key. That breaks the B1 flow; the key must be re-read on every round on the infrastructure side and the UI only needs to close the dialog.
+
+KILL.6 Stop immediately and report if any `js` file uses JSX or requires a compilation step. The settled architecture is `React.createElement` over the UMD libraries from the CDN.
+
+KILL.7 Stop immediately and report if a model service address must be hard-coded into the UI code, or if an environment variable not named in B3 must be read. The UI only knows the endpoints in B7.
+
+KILL.8 Stop immediately and report if `window.React`, `window.ReactDOM` or `window.MaterialUI` cannot be loaded on the machine being tested and there is no alternative connection. Record the failing CDN path, mark it unverified, then hand over to P9 to decide whether to accept it or to stop.
+
+KILL.9 Stop immediately and report if a request appears to save the API key into browser storage, or if a login screen, multiple accounts or any feature outside the B1 flow is added. The scope of P7 is one key input and one chat frame.
+
+KILL.10 Stop immediately and report if `test_static_rules.py` still has red tests after three fix rounds. Report the test names, the actual messages and the related files so P9 can debug, instead of loosening the test rules.
+
+KILL.11 Stop immediately and report if any file other than `static/index.html` plus the 10 files in `static/js/` from B2 must be added, including a page configuration file or a type definition file for the network call files. The browser loads directly from the static paths, with no compilation step.
+
+KILL.12 Stop immediately and report if any one of the fifteen manual test scenarios at the end of section 3c gives no observable result, especially the first-run flow in B1: open the page, the dialog asks for the key, save the key, enter the chat frame without a page reload.
+
+KILL.13 Stop immediately and report if the UI starts showing old history from the server before the user enters the key. That would require an additional endpoint that is not in B7; the mandatory order is ask for status, ask for the key, then allow sending messages.
+
+# 4. FORMAT:
+
+## 4.1. Preconditions, invariants and the list of resulting files
+
+PRE: opencode has finished reading P0 through P6; `run.py`, `pytest.ini`, `requirements.txt` already exist; `py -m pytest -q` is already green for the previous part.
+PRE: the `static/` directory already exists or is newly created; you MUST NOT modify any Python file other than `tests/test_static_rules.py`.
+POST: exactly 11 files exist in `static/` and exactly 1 new file exists in `tests/`.
+POST: the final report contains all 5 tables A, B, C, D, E as in section 4.3.
+
+INV1: ∀ t ∈ static: |lines(t)| < 100.
+INV2: ∀ t ∈ static: no forbidden pattern (raw HTML injection, `eval(`, `document.write`, JSX-like tags).
+INV3: `localStorage` is only allowed to receive the exact key `session_id`; every other key is a rule violation.
+INV4: the API key only exists in the dialog's input box and then goes straight to the local server; it is not stored in `localStorage`, `sessionStorage`, `document.cookie`, it is not printed to the Console, and it is not placed in `placeholder`.
+INV5: every file in `static/js/` is an ES module and only uses `React.createElement`, no JSX, no build step.
+INV6: every string displayed to the user has full Vietnamese diacritics.
+
+ERR: a missing file ⇒ `test_file_phai_ton_tai` is red with a message naming the missing path.
+ERR: an extra file in `static/` ⇒ `test_khong_co_tap_thua` is red, the usual culprits are `static/js/utils.js` or `static/js/api.js`.
+ERR: a file over 100 lines ⇒ `test_duoi_100_dong` is red together with the real line count.
+KILL: stop and ask again if the virtual environment is missing or `py -m pytest -q` from P1 to P6 is not yet green.
+KILL: stop if you detect product code hardcoding a real key into any file of `static/`.
+
+| file | line cap | mandatory content |
+|---|---|---|
+| `static/index.html` | 99 | load React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, Roboto font, Material Symbols Outlined font; `<div id="root">`; the `<script type="module" src="/static/js/main.js">` tag; a CDN load-error block written with `textContent`; an UNVERIFIED comment line next to each CDN URL |
+| `static/js/session_id.js` | 99 | `getSessionId()`, generated with `crypto.randomUUID()`, self-recovering when `localStorage` is blocked |
+| `static/js/api_status.js` | 99 | `apiStatus()`, `GET /api/setup/status`, returns `{ok, status, data}` |
+| `static/js/api_setup.js` | 99 | `apiSetup(apiKey)`, `POST /api/setup`, body `{"api_key": ...}` |
+| `static/js/api_chat.js` | 99 | `apiChat(sessionId, message)`, `POST /api/chat`, body contains only `message` and `session_id` |
+| `static/js/api_reset.js` | 99 | `apiReset(sessionId)`, `POST /api/reset` |
+| `static/js/message_bubble.js` | 99 | `MessageBubble(props)`, `Paper` + `Typography` + `Icon`, the content is a STRING child of the React element |
+| `static/js/setup_dialog.js` | 99 | `SetupDialog(props)`, `Dialog`, `TextField type="password"`, `Alert`, disable the Lưu button while a send is in flight, clear the key box after that send |
+| `static/js/chat_view.js` | 99 | `ChatView(props)`, `AppBar`, message list, `multiline` input box, Gửi button, "Cuộc trò chuyện mới" button, auto-scroll |
+| `static/js/send_handler.js` | 99 | `taoSendHandler(cu)`, code 409 and 401 reopen the key dialog |
+| `static/js/main.js` | 99 | `App()`, calls `api_status`, decides between the dialog and the chat frame, `ReactDOM.createRoot` |
+| `tests/test_static_rules.py` | 99 | 72 tests as in section 4.4 |
+
+Additional rules: each file has exactly ONE responsibility; do not create any file outside the list above; do not create `AGENTS.local.md`, do not create `static/js/utils.js`, do not create `static/js/api.js`, do not create `package.json`.
+
+## 4.2. Format of opencode's final report
+
+The report prints exactly the following 5 tables, adds no other section, and does not repeat the source code.
+
+Table A, files created:
+
+| file | actual line count | under 100 lines | note |
+|---|---|---|---|Table B, static rules:
+
+| rule code | check command | expected result | actual result |
+|---|---|---|---|
+| L1 all 11 files present | `py -m pytest tests\test_static_rules.py -q -k file_phai_ton_tai` | 11 passed | |
+| L2 no extra files | `py -m pytest tests\test_static_rules.py -q -k khong_co_tap_thua` | 1 passed | |
+| L3 under 100 lines | `Get-ChildItem -Recurse -Include *.py,*.js \| Where-Object { $_.FullName -notmatch '\.venv\|node_modules' } \| ForEach-Object { if ((Get-Content $_.FullName \| Measure-Object -Line).Lines -ge 100) { $_.FullName } }` | prints nothing | |
+| L4 no raw HTML injection | `py -m pytest tests\test_static_rules.py -q -k khong_chen_html_tho` | 11 passed | |
+| L5 no dangerous built-ins | `py -m pytest tests\test_static_rules.py -q -k khong_dung_bien_the` | 11 passed | |
+| L6 no JSX | `py -m pytest tests\test_static_rules.py -q -k khong_jsx` | 10 passed | |
+| L7 `localStorage` key | `py -m pytest tests\test_static_rules.py -q -k localstorage` | 1 passed | |
+| L8 accessibility labels | `py -m pytest tests\test_static_rules.py -q -k co_nhan_aria` | 2 passed | |
+| L9 no key in the code | `Select-String -Path static\*.html,static\js\*.js -Pattern 'OPENAI_API_KEY','TEST_KEY_' -Quiet` | no results | |
+
+Table C, red then green:
+
+| turn | command | expectation | result | number of green tests |
+|---|---|---|---|---|
+| turn 1 (RED) | `py -m pytest tests\test_static_rules.py -q` | at least 1 `FAILED` | paste the `FAILED` line verbatim | |
+| turn 2 (GREEN) | `py -m pytest tests\test_static_rules.py -q` | `72 passed` | paste the summary line verbatim | 72 |
+
+Table D, secret scan:
+
+| search pattern | scope | number of results (expected 0) |
+|---|---|---|
+| `[s]k\-` | `static\*.html`, `static\js\*.js` | |
+| `OPENAI_API_KEY` | `static\*.html`, `static\js\*.js` | |
+| `TEST_KEY_` | `static\*.html`, `static\js\*.js` | |
+| a server address other than `unpkg.com` and `fonts.googleapis.com` | `static\js\*.js` | |
+
+Table E, manual browser check, 16 cases:
+
+| number | case | PASS or FAIL result | observable evidence |
+|---|---|---|---|
+
+## 4.3. Mandatory manual check cases in the browser
+
+| number | case | how to perform it | expected result |
+|---|---|---|---|
+| 1 | CDN cannot be loaded | block the network in DevTools then reload the page | a Vietnamese message naming the missing library together with a hint to open DevTools, no blank screen |
+| 2 | `localStorage` is blocked | block `localStorage` then reload the page | messages can still be sent with a session id generated on the fly in memory |
+| 3 | `status` returns a network error | close the window running `py run.py`, click "Thử lại", start the server again | the `Alert` "Không kết nối được máy chủ" appears with a Thử lại button |
+| 4 | no key yet | delete the `OPENAI_API_KEY` line in `.env`, reopen the page | the "Nhập khóa API" dialog opens first, the chat frame is not shown |
+| 5 | saving the key the first time | paste `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`, click Lưu | the dialog closes, the chat frame appears immediately, `.env` has exactly one new line |
+| 6 | the dialog does not store the key | open Application, view Local Storage | only the `session_id` key, no key containing the secret |
+| 7 | clearing the key box after sending | look at the password box right after clicking Lưu | the box is empty, no masking dots remain |
+| 8 | a malformed key | paste a 5-character string, click Lưu | a 400 error is shown in Vietnamese, the key box is cleared, `.env` is unchanged |
+| 9 | the server rejects the key | paste `TEST_KEY_BAD_xxxxxxxxxxxxxxxxxxxx`, click Lưu, then send a message | the chat turn returns 401, the dialog reopens with the line "Khóa API không đúng" |
+| 10 | missing key while the server is running | delete the key line in `.env` then send a message | returns 409, the dialog reopens, the typed message is not lost |
+| 11 | two tabs with the same session | open a second tab, send a message in tab one then reload tab two | the same session id, no message lost |
+| 12 | a message containing a dangerous tag | send `<script>alert(1)</script>` | it is shown verbatim as text, the Console has no error |
+| 13 | a very long message | paste 5000 characters then send | the input box does not break, the bubble does not overflow horizontally, the server returns 400 with a Vietnamese message |
+| 14 | Enter and Shift+Enter | type two lines, press Enter in the middle then Shift+Enter at the end | Enter sends the message, Shift+Enter only inserts a line break |
+| 15 | clicking Gửi twice and scrolling | click the Gửi button repeatedly then send up to 12 messages | only one user message is added, the button is disabled, the list auto-scrolls to the bottom |
+| 16 | accessibility and Vietnamese diacritics | navigate the buttons with the Tab key, read the labels with a screen reader, type Vietnamese with diacritics | the buttons have readable labels, Vietnamese text is displayed with correct diacritics |
+
+## 4.4. Fixed test names in `tests/test_static_rules.py`
+
+| test name | what it checks |
+|---|---|
+| `test_file_phai_ton_tai` | the 11 files in the list exist |
+| `test_khong_co_tap_thua` | no file in `static/` outside the list |
+| `test_duoi_100_dong` | every file is under 100 lines |
+| `test_khong_chen_html_tho` | no file assigns raw HTML to an element |
+| `test_khong_dung_bien_the` | no `eval(`, no `document.write` |
+| `test_index_html_nap_module` | `index.html` has `type="module"`, has `/static/js/main.js`, has react, react-dom, `@mui/material`, Roboto |
+| `test_tap_js_co_export` | the 9 js files loaded by another file have the `export` keyword |
+| `test_tap_giao_dien_dung_create_element` | the 4 UI-building files have `React.createElement` |
+| `test_khong_jsx` | no js file contains JSX-like tags |
+| `test_localstorage_chi_luu_session_id` | `setItem` only uses the key `session_id` |
+| `test_co_nhan_aria` | `setup_dialog.js` and `chat_view.js` have `aria-label` |
+
+Total 72 tests by parameterization: 11 + 1 + 11 + 11 + 11 + 1 + 9 + 4 + 10 + 1 + 2.
+
+# 5. EXAMPLE:
+
+## 5.1. `static/index.html`
+
+```html
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chatbot tiếng Việt</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <style>
+    .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; font-feature-settings: 'liga'; }
+    body { margin: 0; font-family: Roboto, "Segoe UI", Arial, sans-serif; background: #f4f6f8; }
+    #root { min-height: 100vh; }
+  </style>
+  <!-- UNVERIFIED: các URL CDN dưới đây phải được thử tải thật rồi ghi kết quả vào báo cáo. -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@mui/material@5.16.7/umd/material-ui.production.min.js" crossorigin></script>
+  <script>
+    // Báo lỗi tải CDN bằng textContent, tuyệt đối không gán HTML thô vào phần tử.
+    window.addEventListener("load", function () {
+      var thieu = [];
+      if (typeof React === "undefined") { thieu.push("React"); }
+      if (typeof ReactDOM === "undefined") { thieu.push("ReactDOM"); }
+      if (typeof MaterialUI === "undefined") { thieu.push("MaterialUI"); }
+      if (thieu.length === 0) { return; }
+      document.getElementById("root").textContent =
+        "Không tải được thư viện: " + thieu.join(", ") +
+        ". Kiểm tra kết nối mạng, mở DevTools để xem lỗi tải CDN, hoặc tải tệp về thư mục static/ rồi trỏ src về đường dẫn cục bộ.";
+    });
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>
+```
+
+## 5.2. `static/js/session_id.js`
+
+```javascript
+// Mã phiên cho một tab trình duyệt. An toàn khi localStorage bị chặn.
+let duPhong = null;
+
+function sinhMa() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  const bang = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let ket = "";
+  for (let i = 0; i < 24; i += 1) {
+    ket += bang.charAt(Math.floor(Math.random() * bang.length));
+  }
+  return ket;
+}
+
+export function getSessionId() {
+  let kho = null;
+  try {
+    kho = window.localStorage;
+  } catch (loi) {
+    kho = null;
+  }
+  if (kho === null) {
+    if (duPhong === null) { duPhong = sinhMa(); }
+    return duPhong;
+  }
+  let gia = null;
+  try { gia = kho.getItem("session_id"); } catch (loi) { gia = null; }
+  if (gia !== null && /^[A-Za-z0-9-]{8,64}$/.test(gia)) { return gia; }
+  if (duPhong === null) { duPhong = sinhMa(); }
+  try { kho.setItem("session_id", duPhong); } catch (loi) { /* chỉ giữ trong bộ nhớ */ }
+  return duPhong;
+}
+```
+
+## 5.3. `static/js/api_status.js`
+
+```javascript
+// GET /api/setup/status. Không bao giờ ném lỗi ra ngoài.
+export async function apiStatus() {
+  try {
+    const res = await fetch("/api/setup/status", {
+      method: "GET",
+      headers: { Accept: "application/json" }
+    });
+    const data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, data: data };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+## 5.4. `static/js/api_setup.js`
+
+```javascript
+// POST /api/setup. Chỉ gửi khóa lên máy chủ cục bộ, không lưu vào localStorage.
+export async function apiSetup(apiKey) {
+  try {
+    const res = await fetch("/api/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey })
+    });
+    const data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, data: data };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+## 5.5. `static/js/api_chat.js`
+
+```javascript
+// POST /api/chat. Không gửi lịch sử, không gửi khóa.
+export async function apiChat(sessionId, message) {
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: message, session_id: sessionId })
+    });
+    const data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, data: data };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+## 5.6. `static/js/api_reset.js`
+
+```javascript
+// POST /api/reset cho một mã phiên.
+export async function apiReset(sessionId) {
+  try {
+    const res = await fetch("/api/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId })
+    });
+    const data = await res.json().catch(function () { return {}; });
+    return { ok: res.ok, status: res.status, data: data };
+  } catch (loi) {
+    return { ok: false, status: 0, data: { message: "Không kết nối được máy chủ" } };
+  }
+}
+```
+
+## 5.7. `static/js/message_bubble.js`
+
+```javascript
+// Bong bóng một tin. Nội dung là CHUỖI con của phần tử React nên React tự thoát ký tự.
+const el = React.createElement;
+const { Paper, Typography, Icon } = MaterialUI;
+const BIETUONG = "Material Symbols Outlined";
+const TEN_BIEU_TUONG = { human: "person", ai: "smart_toy" };
+
+export function MessageBubble(props) {
+  const tin = props.item;
+  const laHuman = tin.role === "human";
+  return el(Paper, {
+    elevation: 1,
+    "aria-label": laHuman ? "Tin của bạn" : "Tin của trợ lý",
+    sx: { p: 1.5, maxWidth: "78%", display: "flex", gap: 1, borderRadius: "14px",
+          alignItems: "flex-start", alignSelf: laHuman ? "flex-end" : "flex-start",
+          backgroundColor: laHuman ? "#1976d2" : "#ffffff",
+          color: laHuman ? "#ffffff" : "#1c1c1c" }
+  },
+    el(Icon, { baseClassName: "material-symbols-outlined", "aria-hidden": true, sx: { fontSize: 20 } },
+      TEN_BIEU_TUONG[tin.role] || "smart_toy"),
+    el(Typography, { component: "div", variant: "body1",
+                     sx: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, tin.content));
+}
+```
+
+## 5.8. `static/js/setup_dialog.js`
+
+```javascript
+// Hộp thoại nhập khóa API. Khóa KHÔNG được ghi vào localStorage hay cookie.
+import { apiSetup } from "./api_setup.js";
+
+const el = React.createElement;
+const BIETUONG = "Material Symbols Outlined";
+const { Dialog, DialogTitle, DialogContent, DialogActions, TextField, Button, Alert, Icon } = MaterialUI;
+
+export function SetupDialog(props) {
+  const [gia, setGia] = React.useState("");
+  const [dang, setDang] = React.useState(false);
+  const [loi, setLoi] = React.useState(props.loiKhoiDau || "");
+
+  React.useEffect(function () {
+    setGia("");
+    setLoi(props.loiKhoiDau || "");
+  }, [props.token]);
+
+  const bamLuu = async function () {
+    if (dang) { return; }
+    setDang(true);
+    setLoi("");
+    const ket = await apiSetup(gia);
+    setDang(false);
+    setGia("");
+    if (ket.ok) {
+      if (props.onSaved) { props.onSaved(); }
+      return;
+    }
+    if (ket.status === 0) {
+      setLoi("Không kết nối được máy chủ. Hãy chắc chắn py run.py vẫn đang chạy.");
+      return;
+    }
+    setLoi(ket.data.message || "Không lưu được khóa API.");
+  };
+
+  const bamPhim = function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); bamLuu(); }
+  };
+
+  return el(Dialog, { open: props.mo, fullWidth: true, maxWidth: "xs" },
+    el(DialogTitle, null,
+      el(Icon, { baseClassName: "material-symbols-outlined", "aria-hidden": true, sx: { mr: 1 } }, "key"),
+      "Nhập khóa API"),
+    el(DialogContent, null,
+      el(Alert, { severity: "info", sx: { mb: 2 } },
+        "Dán khóa API của bạn vào ô bên dưới. Khóa được ghi vào tệp .env trên máy này và không gửi lên máy chủ khác."),
+      loi.length > 0
+        ? el(Alert, { severity: "error", sx: { mb: 2 }, "aria-label": "Lỗi khi lưu khóa API" }, loi)
+        : null,
+      el(TextField, {
+        id: "truong-khoa-api", label: "Khóa API", type: "password", value: gia,
+        fullWidth: true, margin: "normal", autoFocus: true, disabled: dang,
+        onChange: function (e) { setGia(e.target.value); }, onKeyDown: bamPhim,
+        helperText: "Tối thiểu 20 ký tự, không có khoảng trắng bên trong.",
+        inputProps: { "aria-label": "Ô nhập khóa API", spellCheck: false, autoComplete: "off" }
+      })),
+    el(DialogActions, null,
+      el(Button, { onClick: function () { props.onClose(); }, disabled: dang }, "Đóng"),
+      el(Button, { onClick: bamLuu, variant: "contained", disabled: dang || gia.trim().length === 0,
+                   "aria-label": "Nút lưu khóa API" }, dang ? "Đang lưu..." : "Lưu")));
+}
+```
+
+## 5.9. `static/js/chat_view.js`
+
+```javascript
+// Khung chat: AppBar, danh sách tin, ô nhập, nút Gửi, nút cuộc trò chuyện mới.
+import { MessageBubble } from "./message_bubble.js";
+
+const el = React.createElement;
+const BIETUONG = "Material Symbols Outlined";
+const { AppBar, Toolbar, Typography, Button, Box, TextField, Alert } = MaterialUI;
+
+export function ChatView(props) {
+  const [nhap, setNhap] = React.useState("");
+  const cuoi = React.useRef(null);
+
+  React.useEffect(function () {
+    const nut = cuoi.current;
+    if (nut && nut.scrollIntoView) { nut.scrollIntoView({ block: "end" }); }
+  }, [props.tin.length]);
+
+  const gui = function () {
+    const van = nhap.trim();
+    if (props.dangGui || van.length === 0) { return; }
+    setNhap("");
+    props.onSend(van);
+  };
+
+  const bamPhim = function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); gui(); }
+  };
+
+  const moLai = function () {
+    if (props.dangGui) { return; }
+    setNhap("");
+    props.onReset();
+  };
+
+  const dau = el(AppBar, { position: "static", color: "primary" },
+    el(Toolbar, null,
+      el(Typography, { variant: "h6", sx: { flexGrow: 1 } }, "Chatbot tiếng Việt"),
+      el(Button, {
+        color: "inherit", onClick: moLai, disabled: props.dangGui,
+        startIcon: el(Icon, { baseClassName: "material-symbols-outlined", "aria-hidden": true }, "delete_sweep"),
+        "aria-label": "Nút cuộc trò chuyện mới"
+      }, "Cuộc trò chuyện mới")));
+
+  const danhSach = el(Box, {
+    sx: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 1,
+          backgroundColor: "#eef1f4", borderRadius: 2, p: 1 },
+    role: "log", "aria-label": "Danh sách tin nhắn", "aria-live": "polite"
+  },
+    props.tin.map(function (item, i) { return el(MessageBubble, { key: i, item: item }); }),
+    el("div", { ref: cuoi }));
+
+  const oNhap = el(Box, { sx: { display: "flex", gap: 1, alignItems: "flex-end" } },
+    el(TextField, {
+      fullWidth: true, multiline: true, maxRows: 5, value: nhap, disabled: props.dangGui,
+      onChange: function (e) { setNhap(e.target.value); }, onKeyDown: bamPhim,
+      label: "Tin nhắn", placeholder: "Enter để gửi, Shift+Enter để xuống dòng",
+      inputProps: { "aria-label": "Ô nhập tin nhắn" }
+    }),
+    el(Button, {
+      variant: "contained", onClick: gui, disabled: props.dangGui || nhap.trim().length === 0,
+      startIcon: el(Icon, { baseClassName: "material-symbols-outlined", "aria-hidden": true }, "send"),
+      "aria-label": "Nút gửi tin nhắn"
+    }, props.dangGui ? "Đang trả lời..." : "Gửi"));
+
+  return el(React.Fragment, null, dau,
+    el(Box, { sx: { display: "flex", flexDirection: "column", height: "calc(100vh - 64px)",
+                    p: 2, gap: 1, maxWidth: 900, mx: "auto" } },
+      props.loi
+        ? el(Alert, { severity: "error", "aria-label": "Thông báo lỗi của khung chat" }, props.loi)
+        : null,
+      danhSach, oNhap));
+}
+```
+
+## 5.10. `static/js/send_handler.js`
+
+```javascript
+// Luồng gửi một tin: thêm tin người, gọi API, thêm tin AI hoặc thông báo lỗi.
+import { apiChat } from "./api_chat.js";
+
+const SAI_KHOA = "Khóa API không đúng. Mở hộp thoại để nhập lại.";
+const THIEU_KHOA = "Chưa có khóa API trên máy chủ. Hãy nhập khóa rồi thử lại.";
+
+export function taoSendHandler(cu) {
+  // cu = { docTrang, ghiTrang, moHopKhoa }
+  const themTin = function (role, content) {
+    const s = cu.docTrang();
+    cu.ghiTrang({ tin: s.tin.concat([{ role: role, content: content }]) });
+  };
+
+  return async function gui(text) {
+    if (cu.docTrang().dangGui) { return { ok: false }; }
+    cu.ghiTrang({ dangGui: true, loi: "" });
+    themTin("human", text);
+    const ket = await apiChat(cu.docTrang().sessionId, text);
+    if (ket.ok && typeof ket.data.reply === "string" && ket.data.reply.length > 0) {
+      themTin("ai", ket.data.reply);
+      cu.ghiTrang({ dangGui: false, loi: "" });
+      return { ok: true };
+    }
+    cu.ghiTrang({ dangGui: false });
+    if (ket.status === 409) {
+      cu.moHopKhoa(THIEU_KHOA);
+      return { ok: false };
+    }
+    if (ket.status === 401) {
+      cu.moHopKhoa(SAI_KHOA);
+      return { ok: false };
+    }
+    cu.ghiTrang({ loi: ket.data.message || "Không gửi được tin nhắn." });
+    return { ok: false };
+  };
+}
+```
+
+## 5.11. `static/js/main.js`
+
+```javascript
+// Điều phối: kiểm tra trạng thái, hộp thoại khóa API, khung chat.
+import { getSessionId } from "./session_id.js";
+import { apiStatus } from "./api_status.js";
+import { apiReset } from "./api_reset.js";
+import { SetupDialog } from "./setup_dialog.js";
+import { ChatView } from "./chat_view.js";
+import { taoSendHandler } from "./send_handler.js";
+
+const el = React.createElement;
+const { Box, CircularProgress, Alert, Button } = MaterialUI;
+
+function App() {
+  const [ui, setUi] = React.useState({
+    tai: false, hop: false, loiHop: "", loi: "", loiMayChu: "", token: 0
+  });
+  const boNho = React.useRef({ tin: [], dangGui: false, sessionId: getSessionId() }).current;
+
+  const ghi = React.useCallback(function (moi) {
+    Object.assign(boNho, moi);
+    setUi(function (c) { return Object.assign({}, c, moi); });
+  }, []);
+
+  const moHop = React.useCallback(function (thongDiep) {
+    setUi(function (c) {
+      return Object.assign({}, c, { hop: true, loiHop: thongDiep || "", token: c.token + 1 });
+    });
+  }, []);
+
+  const guiTin = React.useMemo(function () {
+    return taoSendHandler({
+      docTrang: function () { return boNho; },
+      ghiTrang: ghi,
+      moHopKhoa: moHop
+    });
+  }, [ghi, moHop]);
+
+  const kiemTra = React.useCallback(function () {
+    apiStatus().then(function (ket) {
+      const loi = ket.status === 0
+        ? "Không kết nối được máy chủ. Chạy py run.py rồi bấm Thử lại."
+        : (ket.ok ? "" : "Máy chủ trả lỗi " + ket.status + ": "
+          + (ket.data.message || "không rõ nguyên nhân"));
+      setUi(function (c) {
+        return { tai: true, hop: ket.ok && ket.data.configured !== true, loiHop: "",
+                 loi: "", loiMayChu: loi, token: c.token + 1 };
+      });
+    });
+  }, []);
+
+  React.useEffect(function () { kiemTra(); }, [kiemTra]);
+
+  const chatMoi = React.useCallback(function () {
+    apiReset(boNho.sessionId).then(function (ket) {
+      if (ket.ok) { ghi({ tin: [], loi: "" }); return; }
+      ghi({ loi: ket.data.message || "Không xoá được cuộc trò chuyện." });
+    });
+  }, [ghi]);
+
+  if (!ui.tai) {
+    return el(Box, { sx: { height: "100vh", display: "flex", alignItems: "center",
+                            justifyContent: "center" } },
+      el(CircularProgress, { "aria-label": "Đang kiểm tra trạng thái máy chủ" }));
+  }
+
+  if (ui.loiMayChu !== "") {
+    return el(Box, { sx: { height: "100vh", display: "flex", flexDirection: "column", gap: 2,
+                            alignItems: "center", justifyContent: "center", p: 3 } },
+      el(Alert, { severity: "error", "aria-label": "Lỗi kết nối máy chủ" }, ui.loiMayChu),
+      el(Button, {
+        variant: "contained", "aria-label": "Nút thử lại kết nối",
+        onClick: function () {
+          setUi(function (c) { return Object.assign({}, c, { loiMayChu: "" }); });
+          kiemTra();
+        }
+      }, "Thử lại"));
+  }
+
+  return el(React.Fragment, null,
+    el(SetupDialog, {
+      mo: ui.hop, loiKhoiDau: ui.loiHop, token: ui.token,
+      onSaved: function () { ghi({ hop: false, loiHop: "" }); },
+      onClose: function () { kiemTra(); }
+    }),
+    ui.hop ? null : el(ChatView, {
+      tin: boNho.tin, dangGui: boNho.dangGui, loi: ui.loi,
+      onSend: guiTin, onReset: chatMoi
+    }));
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(el(App));
+```
+
+## 5.12. `tests/test_static_rules.py`
+
+```python
+"""Luật tĩnh cho thư mục static: dưới 100 dòng, không chèn HTML thô, đủ tệp, không JSX."""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+STATIC = ROOT / "static"
+JS_DIR = STATIC / "js"
+FILE_YEU_CAU = ["index.html", "js/session_id.js", "js/api_status.js", "js/api_setup.js",
+                "js/api_chat.js", "js/api_reset.js", "js/message_bubble.js",
+                "js/setup_dialog.js", "js/chat_view.js", "js/send_handler.js", "js/main.js"]
+TAP = [STATIC / d for d in FILE_YEU_CAU]
+TEN = [str(p.relative_to(STATIC)) for p in TAP]
+TEN_JS = FILE_YEU_CAU[1:-1]
+TAP_GIAO_DIEN = ["message_bubble.js", "setup_dialog.js", "chat_view.js", "main.js"]
+# Ghép chuỗi để tệp test không tự mang mẫu cấm nhưng vẫn dò đúng.
+CHO = "inner" + "HTML"
+CHO2 = "dangerouslySet" + "Inner" + "HTML"
+
+
+def doc(tap: Path) -> str:
+    return tap.read_text(encoding="utf-8")
+
+
+def so_dong(tap: Path) -> int:
+    return len(doc(tap).splitlines())
+
+
+@pytest.mark.parametrize("duong_dan", FILE_YEU_CAU)
+def test_file_phai_ton_tai(duong_dan: str) -> None:
+    assert (STATIC / duong_dan).is_file(), f"thiếu tệp {duong_dan}"
+
+
+def test_khong_co_tap_thua() -> None:
+    thua = sorted(str(p.relative_to(STATIC)) for p in STATIC.rglob("*")
+                  if p.is_file() and p not in TAP)
+    assert thua == [], f"tệp thừa ngoài danh sách: {thua}"
+
+
+@pytest.mark.parametrize("tap", TAP, ids=TEN)
+def test_duoi_100_dong(tap: Path) -> None:
+    so = so_dong(tap)
+    assert so < 100, f"{tap.name} có {so} dòng, phải dưới 100 dòng"
+
+
+@pytest.mark.parametrize("tap", TAP, ids=TEN)
+def test_khong_chen_html_tho(tap: Path) -> None:
+    noi_dung = doc(tap)
+    assert CHO not in noi_dung, f"{tap.name} không được dùng {CHO}"
+    assert CHO2 not in noi_dung, f"{tap.name} không được dùng {CHO2}"
+
+
+@pytest.mark.parametrize("tap", TAP, ids=TEN)
+def test_khong_dung_bien_the(tap: Path) -> None:
+    noi_dung = doc(tap)
+    assert "eval(" not in noi_dung, f"{tap.name} không được dùng eval"
+    assert "document.write" not in noi_dung, f"{tap.name} không được dùng document.write"
+
+
+def test_index_html_nap_module() -> None:
+    noi_dung = doc(STATIC / "index.html")
+    assert 'type="module"' in noi_dung, "index.html thiếu thẻ script module"
+    assert "/static/js/main.js" in noi_dung, "index.html thiếu đường dẫn main.js"
+    for ten in ("react", "react-dom", "@mui/material", "Roboto"):
+        assert ten in noi_dung, f"index.html thiếu {ten}"
+
+
+@pytest.mark.parametrize("ten", TEN_JS)
+def test_tap_js_co_export(ten: str) -> None:
+    assert "export " in doc(JS_DIR / ten), f"{ten} thiếu từ khóa export"
+
+
+@pytest.mark.parametrize("ten", TAP_GIAO_DIEN)
+def test_tap_giao_dien_dung_create_element(ten: str) -> None:
+    assert "React.createElement" in doc(JS_DIR / ten), f"{ten} phải dùng React.createElement"
+
+
+@pytest.mark.parametrize("ten", FILE_YEU_CAU[1:])
+def test_khong_jsx(ten: str) -> None:
+    noi_dung = doc(JS_DIR / Path(ten).name)
+    assert not re.search(r"<(div|span|p|Button|Dialog)\b", noi_dung), f"{ten} có vẻ dùng JSX"
+
+
+def test_localstorage_chi_luu_session_id() -> None:
+    noi_dung = "\n".join(doc(tap) for tap in TAP)
+    khoa = re.findall(r"setItem\(\s*[\"']([^\"']+)[\"']", noi_dung)
+    assert sorted(set(khoa)) == ["session_id"], f"phím localStorage sai: {khoa}"
+
+
+@pytest.mark.parametrize("ten", ["setup_dialog.js", "chat_view.js"])
+def test_co_nhan_aria(ten: str) -> None:
+    assert "aria-label" in doc(JS_DIR / ten), f"{ten} thiếu nhãn trợ năng"
+```
+
+## 5.13. Sample PowerShell log excerpt
+
+```
+PS D:\chatbot> py -m pytest tests\test_static_rules.py -q
+..............F............................................F.......................
+=========================== short test summary info ===========================
+FAILED tests/test_static_rules.py::test_duoi_100_dong[js/chat_view.js] - chat_view.js có 103 dòng, phải dưới 100 dòng
+FAILED tests/test_static_rules.py::test_khong_jsx[js/chat_view.js] - js/chat_view.js có vẻ dùng JSX
+========================= 2 failed, 70 passed in 0.71s ==========================
+
+PS D:\chatbot> Get-Content static\js\chat_view.js | Measure-Object -Line
+ Lines
+ -----
+      103
+
+PS D:\chatbot> py -m pytest tests\test_static_rules.py -q
+........................................................................
+============================ 72 passed in 0.64s ==============================
+
+PS D:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+
+PS D:\chatbot> Select-String -Path static\*.html,static\js\*.js -Pattern '[s]k\-','OPENAI_API_KEY','TEST_KEY_'
+Không có kết quả.
+
+PS D:\chatbot> Select-String -Path static\js\*.js -Pattern 'localStorage.setItem'
+Không có kết quả.
+
+PS D:\chatbot> Select-String -Path static\js\session_id.js -Pattern 'setItem'
+MatchInfo
+---------
+LineNumber : 30
+Line       :   try { kho.setItem("session_id", duPhong); } catch (loi) { /* chỉ giữ trong bộ nhớ */ }
+
+PS D:\chatbot> Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+PS D:\chatbot> Start-Sleep -Seconds 3
+PS D:\chatbot> Invoke-RestMethod http://127.0.0.1:2610/api/health
+ok
+--
+True
+PS D:\chatbot> Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+configured
+---------
+False
+```
+
+After saving the key through the dialog on the page, run again:
+
+```
+PS D:\chatbot> Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+configured
+---------
+True
+PS D:\chatbot> py -m pytest -q
+................................................................................
+============================ 120 passed in 3.41s ==============================
+```
+
+The `120 passed` line is an example: the number of tests from P1 to P6 plus the 72 tests of this part. opencode must paste its own real summary line verbatim.
+
+# 6. NOTICES:
+
+1. DO NOT use JSX and DO NOT add Babel: the browser does not compile, so only `React.createElement` can run.
+2. DO NOT use `innerHTML` and DO NOT use `dangerouslySetInnerHTML` in any file in `static/`: user messages are untrusted data, and React must escape characters itself.
+3. DO NOT write forbidden patterns into the test file as plain strings: they must be concatenated like `CHO = "inner" + "HTML"` so that the test file does not violate its own rule.
+4. DO NOT write the API key into `localStorage`, `sessionStorage`, `document.cookie` or a global variable: the key may only live in the `.env` file on the server side.
+5. DO NOT print the key value to the Console and DO NOT place it in `placeholder`: clear the input box immediately after each send.
+6. DO NOT send the key in the body of `/api/chat`: the client may only send `message` and `session_id`.
+7. DO NOT create any file outside the 12 files in table 4.1: adding a file violates the directory tree rule.
+8. DO NOT gather several functions into one js file and DO NOT create a shared utility file: each file has exactly one function according to the blueprint's rule.
+9. DO NOT add a build step, DO NOT install packages through npm, DO NOT create `package.json`: everything is downloaded with `script` tags from a CDN.
+10. DO NOT trust a CDN URL that has not been tested by a real load: it must be marked UNVERIFIED and the test result must be written into the report.
+11. DO NOT depend on the Roboto font being loadable: always have a fallback `font-family` so the text does not disappear.
+12. DO NOT hand-draw SVGs and DO NOT use emoji as icons: use the `Icon` component of the UI library with a Google icon name.
+13. DO NOT use the browser's `alert()` and DO NOT use `window.confirm`: every message goes through `Alert` and the buttons sit in the top bar.
+14. DO NOT call `scrollIntoView` when `cuoi.current` is null: the element has no node yet while it is not displayed.
+15. DO NOT let the Đóng button close the dialog while the server has no key: this button must call the status check again so that the dialog reopens.
+16. DO NOT use `setInterval` to poll the status: call `api_status` only once when the page opens and on every click of Thử lại.
+17. DO NOT write example keys as strings beginning with a vendor prefix: every sample key in the tests and in the report must be `TEST_KEY_` followed by 20 x's.
+18. DO NOT run `py run.py` in opencode's shell: you must use `Start-Process` so that the work session does not hang.
+19. DO NOT modify `run.py`, `pytest.ini`, `requirements.txt` or the Python source code when doing the UI part.
+20. DO NOT skip any manual check case in table 5.13: all 16 cases are required and each must record observable evidence.
+21. DO NOT declare completion with only green tests: you must run both the 100-line rule command and the secret scan command.
+22. DO NOT write Vietnamese comments without diacritics in the code: every string displayed to the user must have full diacritics.
+23. DO NOT let an empty AI reply leave the frame blank: `send_handler` must treat it as an error and show a Vietnamese message.
+
+
+Binding rule B24: every coding prompt must explicitly state the recovery procedure to follow if opencode stops or loses context midway through the task. The prompt must define a re-paste rule — the exact minimal text (current task statement, affected file paths, and last completed step) to re-paste into a fresh session so work can continue without re-explaining — and a checkpoint-by-tests rule requiring that each completed unit of work be validated by running the relevant test suite before proceeding, so a restart resumes from the last green test checkpoint rather than from an ambiguous midpoint. State these instructions verbatim inside the prompt body, never in a separate document. Acceptance: a reviewer can delete the assistant's context and, by re-pasting only the prompt's stated resume block and re-running the named tests, continue the task at the exact step where execution stopped.
+
+Requirement B35 is a binding rule: any code listing exceeding 99 lines must be treated as a reference design and never pasted as a single file; instead, the builder splits it into modules of at most 99 lines each, with exactly one function per file, and updates all imports accordingly. The acceptance test: a 150-line reference listing produces at least two module files each ≤99 lines, each containing exactly one function, and the original imports resolve without modification to the caller.
+
+Binding rule on test hooks (B38). The browser acceptance tests find elements only by these exact aria-label values, so use exactly these strings and no others: the API key dialog `Hộp thoại nhập khóa API`, the key field `Ô nhập khóa API`, the save button `Nút lưu khóa API`, the dialog error `Lỗi khi lưu khóa API`, the message list `Danh sách tin nhắn`, the user bubble `Tin của bạn`, the assistant bubble `Câu trả lời của trợ lý`, the message input `Ô nhập tin nhắn`, the send button `Nút gửi tin nhắn` and the new conversation button `Nút cuộc trò chuyện mới`. A different label such as `Tin người dùng` or `Tin trợ lý` makes the browser tests time out. Acceptance: for each label, `rg -c "<label>" static/js` prints at least 1.
+
+Binding rule on icons (B39). Every `MaterialUI.Icon` call carries `baseClassName: "material-symbols-outlined"`. Without it MUI v5 applies the `material-icons` class, the icon font is not applied and the icon name prints as clipped text (for example `sn` for `smart_toy`). Acceptance: `rg -n "MaterialUI.Icon" static/js` lists only calls whose arguments contain `baseClassName`.
+# 7. INPUT:
+
+The learner provides opencode, in the Input part of the main prompt or by editing the instruction directly:
+
+| item | where to get it | expected form |
+|---|---|---|
+| the absolute path to the `chatbot/` project root directory | the file explorer or the command `Get-Location` | for example `D:\chatbot` |
+| the result of `py -m pytest -q` for the parts P1 to P6 | paste the summary line verbatim | for example `48 passed in 1.02s` |
+| which files in `static/` already exist | `Get-ChildItem -Recurse static` | a list of file names or "nothing yet" |
+| the exact content of the `py run.py` currently in use | open the file `run.py` | a code excerpt, so the AI does not edit the wrong thing |
+| the real port and address currently in use | the file `.env` | for example `HOST=127.0.0.1`, `PORT=2610` |
+| the result of testing each CDN URL | the browser, Network tab | "loadable" or "not loadable" |
+| whether to use the old `chatbot` or build a new one | one word: `moi` or `cu` | decides whether old files are deleted |
+| whether a mock server is used for the final test run | answer `co` or `khong` | decides manual check case 9 and case 10 |
+
+No need to provide: the API key, the conversation content, the model code, the language configuration, screenshots.
+
+The mandatory warning must be located in the Input part: KHÓA API KHÔNG DÁN VÀO CUỘC TRÒ CHUYỆN NÀY VỚI OPENCODE, KHÔNG GHI VÀO MÃ NGUỒN, KHÔNG GHI VÀO BÁO CÁO. The key is entered on the chatbot page during the first run: open `http://127.0.0.1:2610`, the dialog "Nhập khóa API" opens first, paste the key into the password box, click Lưu, the server writes it into the `.env` file and then the chat frame runs immediately. If the learner has already pasted the key here, it must be deleted from the conversation history right away and the key must be rotated afterwards.
+
+If any item in the table above is missing, opencode must ask exactly one question for that item before starting; it must not invent values.
+
+# 8. OKRs (O + KRs):
+
+O: Finish the MUI interface for the web chatbot, comprising the first-time API key dialog and the chat frame, every file under 100 lines, every test green, every manual check case with evidence.
+
+| KR | statement | how to check |
+|---|---|---|
+| KR1 | Exactly 11 files in `static/`, 0 extra files, 0 missing files | `py -m pytest tests\test_static_rules.py -q -k "file_phai_ton_tai or khong_co_tap_thua"` gives 12 passed |
+| KR2 | All 72 tests of `tests/test_static_rules.py` are green | `py -m pytest tests\test_static_rules.py -q` prints `72 passed` |
+| KR3 | At least 1 RED run before the GREEN run, each run pasting the `FAILED` line and the summary line verbatim | table C in the report |
+| KR4 | 0 files exceeding 99 lines | the `Get-ChildItem` command in table B row L3 prints nothing |
+| KR5 | 0 occurrences of forbidden patterns in `static/` | `py -m pytest tests\test_static_rules.py -q -k "khong_chen_html_tho or khong_dung_bien_the or khong_jsx"` gives 32 passed |
+| KR6 | `localStorage` holds only the key `session_id` | `py -m pytest tests\test_static_rules.py -q -k localstorage` gives 1 passed |
+| KR7 | 0 results when scanning for secrets in `static/` | the `Select-String` command with the patterns `[s]k\-`, `OPENAI_API_KEY`, `TEST_KEY_` prints "Không có kết quả" |
+| KR8 | All 16 manual check cases have a PASS or FAIL verdict together with observable evidence | table E has all 16 rows, no row left empty |
+| KR9 | The first-run flow works: `configured` switches from `False` to `True` after the key is saved on the page | `Invoke-RestMethod http://127.0.0.1:2610/api/setup/status` before and after the Lưu click |
+| KR10 | The server answers `/api/health` and `/api/setup/status` within 1 second | measure the time in PowerShell, write it into the note at the end of the report |
+| KR11 | The final report contains all 5 tables A, B, C, D, E and does not repeat the source code | count the titled tables in the report |
+| KR12 | `py -m pytest -q` for the whole project is green, no test is skipped | paste the whole-project summary line verbatim |
+

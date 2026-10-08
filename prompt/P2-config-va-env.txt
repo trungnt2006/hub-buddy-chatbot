@@ -1,0 +1,1217 @@
+PROMPT P2: configuration and the .env file (TDD). Paste the WHOLE text below into opencode in order P0 to P9; paste P2 only after all earlier prompts are green.
+
+# 1. Role:
+
+Software architecture expert and formal specification author for a Python web chatbot using Flask and MUI. The only task of this part is to generate the P2 prompt, that is, the specification that builds the configuration layer `config/` in the DDD chatbot running on Windows 11 with PowerShell. Write as a formal specification: PRE, POST, INV, ERR, KILL, numbered steps, symbols ∀ ∃ ⇒ ∧ ∨ :=. Explanations and comments in accented Vietnamese; file names, function names, key names, and paths stay in English. TDD is the mandatory order: tests first, code later. Every rule in blueprint v4 is fixed, configured through the `Settings` dataclass frozen with exactly nine fields. Never print API key values into messages, logs, exceptions, or responses. Do not wrap the entire content in a code block, do not summarize, do not greet.
+
+# 2. Context (5W1H):
+
+**What.** P2 generates three files `src/chatbot/config/settings.py`, `src/chatbot/config/settings_error.py`, `src/chatbot/config/load_settings.py`, together with the test file `tests/test_load_settings.py`. `settings.py` contains the frozen dataclass `Settings` with exactly nine fields `openai_api_key`, `openai_model`, `openai_temperature`, `openai_timeout`, `host`, `port`, `memory_file`, `max_messages`, `system_prompt_file`. `settings_error.py` contains the class `SettingsError`. `load_settings.py` contains the function `load_settings(env_path)`. Each file is under 100 lines.
+
+**Why.** P2 is the only place that knows the default values and limits of the configuration, so every later layer must go through it. In particular, `openai_api_key` is allowed to be empty at startup to serve the first-time API key flow: the server must come up at `http://127.0.0.1:2610` when there is no key yet, `GET /api/setup/status` returns `{"configured": false}`, the MUI dialog appears, `POST /api/setup` writes the key into `.env` and only then can chatting happen. If `load_settings` throws when the key is empty, the first-run flow dies immediately at step one. Therefore P2 must distinguish clearly: a missing key is valid, a malformed value is an error.
+
+**Who/Where.** The reader is the opencode coding assistant running in a command-line window, together with a learner using Windows 11 and PowerShell. The target location is the project root directory `chatbot/`, especially `src/chatbot/config/` and `tests/`. Dependency arrows: `interface → application → domain`, `infrastructure → domain`, while `config` must not depend on any layer; only `run.py` in P6 calls it.
+
+**When.** P2 is the second prompt in the chain of ten prompts P0 to P9. The previous prompt is P1, which builds the directory tree, `venv`, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example`, ensuring `py -m pytest -q` runs with 0 tests. The next prompt is P3, which builds `domain/`. Because P1 does not yet have `Settings`, `run.py` and every other layer may only call `load_settings` from P6 onward. P2's green evidence is `tests/test_load_settings.py` with the nine test-case groups from B9.
+
+**How.** Use `dotenv_values` to read the `.env` file into a dictionary, absolutely do NOT overwrite `os.environ`, do NOT call `load_dotenv`, do NOT load global environment variables. Apply defaults when a key is absent, validate each key against the B3 table, throw `SettingsError` with an accented Vietnamese message naming the key and the accepted range but not stating the API key value. Verify by running in PowerShell: `py -m pip install -r requirements.txt`, `py -m pytest -q tests/test_load_settings.py`.
+
+**Prompt shape.** This is PART A of the P2 prompt, consisting of `# 1. Role:`, `# 2. Context (5W1H):`, `# 3. Instructions (formal-spec):` with two sub-items 3a and 3b, then stopping. The system will insert blueprint v4 verbatim after 3b and continue with part B. Do not draw any additional heading outside the three assigned sections.
+
+**Constraints.** Use only PowerShell, Python invoked via `py`. Do not use `python3`, `curl`, `sudo`, `source`, `grep`. Use only short dashes, no long dashes. Do not mention Telegram or BotFather. Do not write strings starting with `sk-`. The sample key in tests is always `TEST_KEY_` plus twenty x characters. Do not mix responsibilities of P3 onward into P2. Keep file names and function names exactly matching the B2 directory tree.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE:
+
+- PRE.1 Check before writing tests: the file `tests/test_load_settings.py` does not yet exist or is empty. Check command: `Test-Path tests/test_load_settings.py`.
+- PRE.2 Check that the configuration file does not yet exist at P2, it must be created by P2. Check command: `Test-Path src/chatbot/config/settings.py`.
+- PRE.3 `py -m pytest -q` runs with 0 tests before P2 adds tests. Check command: `py -m pytest -q`.
+- PRE.4 The virtual environment has been activated per B11, command `.\.venv\Scripts\Activate.ps1`.
+- PRE.5 `requirements.txt` already contains `python-dotenv` and `pytest`. Check command: `Select-String -Path requirements.txt -Pattern 'python-dotenv'`.
+- PRE.6 `pytest.ini` already sets `pythonpath = src` and `testpaths = tests`. Check command: `Select-String -Path pytest.ini -Pattern 'pythonpath'`.
+- PRE.7 The directory `tests/fakes/` already exists per B2. Check command: `Test-Path tests/fakes`.
+- PRE.8 The project's real `.env` file must NOT be read in tests; the test builds a temporary file in the temporary directory and passes the path into `load_settings`.
+- PRE.9 Every API key used in tests must be `TEST_KEY_` plus exactly twenty x characters, for example `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`.
+- PRE.10 Tests are written and run red before source code is written; each failing case must show a real failure and not an import error.
+- PRE.11 Do not create any file exceeding 100 lines before writing it; if about to exceed, you must split functions, not merge them.
+- PRE.12 `src/chatbot/config/__init__.py` exists and is empty. Check command: `(Get-Item src/chatbot/config/__init__.py).Length`.
+- PRE.13 Function names and class names must exactly match the blueprint: `load_settings`, `Settings`, `SettingsError`.
+- PRE.14 If P1 already generated `.env.example`, that file's content must contain exactly the nine key names of B3 so P2 can cross-check.
+
+POST:
+
+- POST.1 Generate all three source files in `src/chatbot/config/`. Check: `Get-ChildItem src/chatbot/config -Filter *.py | Select-Object -ExpandProperty Name`.
+- POST.2 `Settings` is a frozen dataclass with exactly the nine fields listed in POST.3. Check: `py -m pytest -q tests/test_load_settings.py`.
+- POST.3 The fields of `Settings` are `openai_api_key: str`, `openai_model: str`, `openai_temperature: float`, `openai_timeout: int`, `host: str`, `port: int`, `memory_file: str`, `max_messages: int`, `system_prompt_file: str`.
+- POST.4 `load_settings` returns a `Settings` object when every key is valid. Check: test `test_returns_settings_object`.
+- POST.5 A missing `.env` file returns a fully defaulted `Settings` per B3, with no error thrown. Check: test `test_missing_env_file_uses_defaults`.
+- POST.6 Any invalid value for any key per B3 throws `SettingsError`. Check: tests `test_port_not_integer`, `test_port_too_low`, `test_port_too_high`, `test_host_rejected_zero`, `test_temperature_out_of_range`, `test_timeout_out_of_range`, `test_max_messages_out_of_range`.
+- POST.7 The `SettingsError` message is accented Vietnamese, names the NAME of the invalid key and the accepted value range, and does NOT contain the value of `OPENAI_API_KEY`. Check: test `test_error_message_hides_api_key_value`.
+- POST.8 `load_settings` does NOT write to `os.environ` and does NOT call any global environment variable loader. Check: test `test_does_not_touch_os_environ`.
+- POST.9 Correctly handles a `.env` with CRLF line endings, with a `utf-8-sig` BOM, with values wrapped in double quotes, with spaces around the equals sign, with comment lines starting with `#`, and with blank lines. Check: the corresponding tests in the nine test-case groups of B9.
+- POST.10 If the `OPENAI_API_KEY` line appears multiple times, take the value from the last line. Check: test `test_duplicate_key_uses_last_line`.
+- POST.11 Running `py -m pytest -q tests/test_load_settings.py` yields fully green results, with no test skipped.
+- POST.12 The B11 100-line rule is enforced and no file is printed. Check: the line-count command in B11 returns empty.
+- POST.13 The total number of tests in `tests/test_load_settings.py` covers all nine test-case groups of B9, each group with at least one test.
+
+INV:
+
+- INV.1 DDD: the `config` layer does not import from `domain`, `application`, `infrastructure`, `interface`; it may only import the standard library and `dotenv`.
+- INV.2 Dependency INV: every other layer reads configuration through `Settings`, and never reads `os.environ` or the `.env` file directly.
+- INV.3 TDD: for each new function, at least one red test exists before the source code exists; the writing order is test then code.
+- INV.4 Each function or each class lives in exactly one file; `settings_error.py` contains only `SettingsError`.
+- INV.5 Every file created by P2 is under 100 lines, including `tests/test_load_settings.py`.
+- INV.6 No key leakage: ∀ value `openai_api_key` ⇒ it never appears in a `SettingsError` message, in the `repr` of `Settings`, in logs, in `print`.
+- INV.7 The `repr` of `Settings` must mask the key with four asterisks exactly as the `mask_secret` of B6 does, even though that function belongs to P5; at P2 you only need to ensure `repr` does not leak the key.
+- INV.8 Configuration changes only when there is a `.env` file change or a call to `/api/setup` at P6; `load_settings` is a pure function of the input path.
+- INV.9 `Settings` is immutable after creation: ∀ attribute w ∈ the nine fields ⇒ reassignment raises `FrozenInstanceError`.
+- INV.10 An empty `OPENAI_API_KEY` is a valid state ⇒ `SettingsError` must NOT be thrown for this reason.
+- INV.11 `HOST` only accepts `127.0.0.1` or `localhost` ⇒ every other value including `0.0.0.0` is rejected.
+- INV.12 Every numeric value is converted explicitly with `int` or `float`; a value that cannot be converted ⇒ `SettingsError`, no raw `ValueError` thrown out.
+- INV.13 Real numbers are accepted in the closed interval 0.0 to 2.0; negative numbers are rejected.
+- INV.14 `PORT` lies in the closed interval 1024 to 65535.
+- INV.15 `OPENAI_TIMEOUT` is an integer in the closed interval 1 to 300.
+- INV.16 `MAX_MESSAGES` is an integer in the closed interval 1 to 50.
+- INV.17 `OPENAI_MODEL` and `SYSTEM_PROMPT_FILE` are non-empty strings after trimming whitespace.
+- INV.18 `MEMORY_FILE` is a valid relative path ⇒ an absolute path is rejected.
+- INV.19 Comment lines and blank lines in `.env` are skipped entirely, producing no junk keys.
+- INV.20 Values wrapped in double quotes or single quotes are stripped, and the result is used as the real value.
+- INV.21 A `utf-8-sig` BOM at the start of the file does not corrupt the key name on the first line.
+- INV.22 CRLF leaves no residual `\r` character in any value.
+- INV.23 If a key appears multiple times ⇒ the last line's value wins, following dotenv's overwrite order.
+- INV.24 `load_settings` is read-only: ∀ call ⇒ the content of the `.env` file does not change.
+- INV.25 Every `SettingsError` message ends with sentence punctuation and is in accented Vietnamese, never unaccented.
+- INV.26 Tests do not depend on run order; each test builds its own temporary file via `tmp_path`.
+- INV.27 Tests do not touch the project's real `.env` and do not write to the global `os.environ` outside test time.
+- INV.28 Do not create new dependencies beyond `python-dotenv`, `pytest`, and the packages P1 already has.
+
+ERR:
+
+- ERR.1 `SettingsError` inherits from `Exception`, has the attribute `key` storing the invalid key name and `accepted` storing the description of the accepted value.
+- ERR.2 Wrong numeric type ⇒ `SettingsError` with a message containing the key name, for example `Giá trị PORT phải là số nguyên trong khoảng 1024 đến 65535.`
+- ERR.3 Wrong value domain ⇒ `SettingsError` stating the accepted range, for example `Giá trị OPENAI_TEMPERATURE phải nằm trong khoảng 0.0 đến 2.0.`
+- ERR.4 Invalid `HOST` ⇒ `SettingsError` naming only the two permitted values.
+- ERR.5 Empty `OPENAI_MODEL` ⇒ `SettingsError` clearly stating it must not be empty.
+- ERR.6 `MEMORY_FILE` is an absolute path ⇒ `SettingsError` stating the relative path requirement.
+- ERR.7 The `.env` file is unreadable because of permissions ⇒ `SettingsError` with an accented Vietnamese message naming the path, NOT stating the file content.
+- ERR.8 A line in `.env` without an equals sign ⇒ skipped like a comment line, no error.
+- ERR.9 A malformed API key value is NOT detected at P2 ⇒ `load_settings` only checks for non-emptiness and does not log the content.
+- ERR.10 Every error at P2 is a `SettingsError`; do NOT let `ValueError`, `KeyError`, `TypeError` or library errors escape `load_settings`.
+- ERR.11 Errors must originate exactly in the `config` layer; `run.py` only catches and prints, and must not reinterpret the values itself.
+
+KILL:
+
+- KILL.1 Cancel P2 if `settings.py` has started being written while `tests/test_load_settings.py` is not yet written.
+- KILL.2 Cancel if `Settings` has more or fewer than nine fields compared to POST.3.
+- KILL.3 Cancel if `load_settings` writes to `os.environ` or calls `load_dotenv`.
+- KILL.4 Cancel if an error message contains the real API key string or the value of `OPENAI_API_KEY`.
+- KILL.5 Cancel if any P2 file exceeds 100 lines.
+- KILL.6 Cancel if any file in `src/chatbot/config/` contains a string starting with `sk-`.
+- KILL.7 Cancel if tests use a command that is not PowerShell, or use `python3`, `curl`, `sudo`, `source`, `grep`.
+- KILL.8 Cancel if P2 creates files belonging to `domain/`, `application/`, `infrastructure/`, `interface/`, `static/` or `run.py`.
+- KILL.9 Cancel if `load_settings` throws when `OPENAI_API_KEY` is empty, because that blocks the first-time API key flow.
+- KILL.10 Cancel if `py -m pytest -q` at the end of P2 still has red tests or tests skipped via `pytest.mark.skip`.
+
+The construction steps, in the mandatory order:
+
+1. Write `tests/test_load_settings.py` first, containing the nine test-case groups: missing file and BOM; CRLF, double quotes, spaces around equals, comment lines; PORT as text, 80, 70000; HOST `0.0.0.0`; TEMPERATURE 2.5, negative, text; TIMEOUT 0, 301; MAX_MESSAGES 0, 51; duplicate key; error message not leaking the key.
+2. Run `py -m pytest -q tests/test_load_settings.py`, confirm red because `config` is missing, record the expected error messages.
+3. Write `settings_error.py` with `SettingsError` and the two attributes `key`, `accepted`.
+4. Write `settings.py` with the frozen dataclass `Settings`, nine fields, defaults matching B3, and a `__repr__` that masks the key.
+5. Write `load_settings.py`: read via `dotenv_values`, trim whitespace, strip quotes, apply defaults, validate against the decision table below, return `Settings`.
+6. Decision table, each row is one test case, columns KEY NAME, CONDITION, RESULT:
+
+| KEY NAME | CONDITION | RESULT |
+|---|---|---|
+| OPENAI_API_KEY | absent or empty | use `""`, valid |
+| OPENAI_MODEL | absent or empty | use `gpt-4o-mini` |
+| OPENAI_MODEL | whitespace only | use default |
+| OPENAI_MODEL | has a value | keep as is after trimming |
+| OPENAI_TEMPERATURE | absent | use `0.3` |
+| OPENAI_TEMPERATURE | not convertible to float | `SettingsError` |
+| OPENAI_TEMPERATURE | outside 0.0 to 2.0 | `SettingsError` |
+| OPENAI_TIMEOUT | absent | use `30` |
+| OPENAI_TIMEOUT | not convertible to int | `SettingsError` |
+| OPENAI_TIMEOUT | outside 1 to 300 | `SettingsError` |
+| HOST | absent | use `127.0.0.1` |
+| HOST | is `127.0.0.1` or `localhost` | accept |
+| HOST | any other value including `0.0.0.0` | `SettingsError` |
+| PORT | absent | use `2610` |
+| PORT | not convertible to int | `SettingsError` |
+| PORT | outside 1024 to 65535 | `SettingsError` |
+| MEMORY_FILE | absent | use `memory.json` |
+| MEMORY_FILE | is an absolute path | `SettingsError` |
+| MAX_MESSAGES | absent | use `5` |
+| MAX_MESSAGES | not convertible to int | `SettingsError` |
+| MAX_MESSAGES | outside 1 to 50 | `SettingsError` |
+| SYSTEM_PROMPT_FILE | absent | use `system-prompt.txt` |
+| SYSTEM_PROMPT_FILE | empty after trimming | `SettingsError` |
+
+7. Re-run `py -m pytest -q tests/test_load_settings.py` until fully green.
+8. Run the B11 100-line rule and confirm no file is printed.
+9. Verify in PowerShell: `(Get-Content tests/test_load_settings.py | Measure-Object -Line).Lines` is less than 100 and likewise for the three `config/` files.
+
+## 3b. Short glossary
+
+- opencode: coding assistant running in a command-line window, reads all ten prompts P0 to P9 and then builds the project.
+- API: programming interface for calling external services, here the model answering service.
+- endpoint: URL path where the server receives requests, for example `/api/setup/status`.
+- venv: Python virtual environment isolating the project's libraries, created with `py -m venv .venv`.
+- pytest: test framework writing tests with `test_...` functions, run with `py -m pytest -q`.
+- DDD: architecture taking the business domain as the center, dependency arrows point inward.
+- TDD: order of writing tests first, seeing red, then writing code until green.
+- MUI: React component set provided by Material, loaded in the browser from a CDN.
+- formal spec: specification using PRE, POST, INV, ERR, KILL blocks and the logic symbols ∀ ∃ ⇒ ∧ ∨ := instead of prose.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation procedure (TDD)
+
+Canonical vocabulary, each term is explained ONCE ONLY and reused from P0 to P9: opencode is the coding assistant that runs in a terminal window; API is the application programming interface, here the external model service; endpoint is the end point of the API that the browser calls; venv is a Python virtual environment that isolates libraries for the project; pytest is Python's test runner, it understands files named `test_*.py` and reports green or red; DDD is the way to layer around the business core, dependency arrows run in one direction only; TDD is Test-Driven Development, meaning write the test first, see it red, write the minimum code to turn it green, then clean up; MUI is the UI component library used in P7; formal spec is a formal specification made of PRE, POST, INV, ERR, KILL blocks.
+
+Inviolable principles of P2:
+
+- PRE of this section: the directory tree from B2 was already built in P1; `py -m pytest -q` runs with 0 tests; `requirements.txt` already has `python-dotenv`; `pytest.ini` already has `pythonpath = .` and `testpaths = tests`; the `.env` file at the project root already exists with the sample content created by P1; no file exists yet in `src/chatbot/config` because this directory is empty before P2.
+- POST of this section: exactly three files exist: `src/chatbot/config/settings.py`, `src/chatbot/config/settings_error.py`, `src/chatbot/config/load_settings.py`; `tests/test_load_settings.py` exists with 11 test functions and 26 runs after parameter expansion; every run is green; the 100-line check command from B11 prints nothing for either the code or the test file; `.env.example` matches the default column of decision table 3d.
+- INV of this section: (I1) `load_settings` is a pure function that reads files, and does NOT write anything into `os.environ`; (I2) no error message, log, or exception contains the real value of `OPENAI_API_KEY`; (I3) an invalid value always comes with the KEY NAME and the accepted range in the message; (I4) `Settings` is frozen with exactly nine fields; (I5) the `config` directory may only import `dataclasses`, `math`, `pathlib.Path`, `dotenv.dotenv_values`, and modules of the same `src.chatbot.config` package; (I6) every file in scope stays under 100 lines, including `tests/test_load_settings.py`.
+- Out of P2 scope: writing keys into `.env` (belongs to P5, file `env_api_key_store.py`), key format validation (belongs to P4, file `validate_api_key.py`), building the Flask application (belongs to P6). P2 only READS keys and keeps any string as-is, even a garbage string, because the first-key prompt flow in B1 is handled by P6 and P5.
+
+Helper function convention, applied only to P2 and not to be extended to other prompts: for a public function (not starting with an underscore) there is one function per file; an underscore-prefixed helper function is allowed to live in the same file as its public function because they are not entry points of the `config` layer. Therefore `load_settings.py` contains four functions: one public function and three underscore-prefixed helpers. If this approach cannot stay under 100 lines, apply KILL.8, do NOT create new files outside the B2 tree. The same constraint applies to `tests/test_load_settings.py`: a single test file for `load_settings`, because splitting tests is an architecture decision, see KILL.10.
+
+### RED round: write the test first
+
+1. Create the file `tests/test_load_settings.py`. The function signature under test: `load_settings(env_path: Path) -> Settings`, using no exception class other than `SettingsError`. Algorithm of the test file:
+
+```text
+CHO mỗi ca trong bảng quyết định 3d:
+    GHI tệp .env trong tmp_path bằng write_bytes để không bị đổi ký tự xuống dòng
+    GỌI load_settings
+    NẾU giá trị vào hợp lệ: THEN so sánh từng trường của Settings
+    ELSE: THEN bắt SettingsError và kiểm TÊN khóa cùng khoảng chấp nhận nằm trong thông điệp
+SAU mỗi hàm kiểm tra: chụp dict(os.environ) trước, gọi lại hàm, rồi so sánh dict(os.environ)
+```
+
+The key used in the tests is always the constant `KEY_20` built from the prefix `TEST_KEY_` plus 20 x characters, so that a real machine never leaks a key. Every file name mentioned in a test value must be a file that exists in the B2 tree, that is `memory.json` and `system-prompt.txt`; no strange file names are generated. The version below is 98 lines long, under 100 per the B2 and B11 rule.
+
+```python
+import os
+
+import pytest
+
+from src.chatbot.config.load_settings import load_settings
+from src.chatbot.config.settings import Settings
+from src.chatbot.config.settings_error import SettingsError
+
+KEY_20 = "TEST_KEY_" + "x" * 20
+
+
+def write_env(tmp_path, body):
+    path = tmp_path / ".env"
+    path.write_bytes(body.encode("utf-8"))
+    return path
+
+
+def test_missing_env_uses_defaults(tmp_path):
+    s = load_settings(tmp_path / ".env")
+    assert s == Settings()
+    assert (s.openai_model, s.host, s.port, s.max_messages) == ("gpt-4o-mini", "127.0.0.1", 2610, 5)
+    t = load_settings(write_env(tmp_path, "OPENAI_API_KEY=chu-rac-123\n"))
+    assert t.openai_api_key == "chu-rac-123"
+
+
+def test_reads_all_nine_keys(tmp_path):
+    body = (f"OPENAI_API_KEY={KEY_20}\nOPENAI_MODEL=gpt-4o-mini\nOPENAI_TEMPERATURE=1.25\n"
+            "OPENAI_TIMEOUT=45\nHOST=localhost\nPORT=8080\nMEMORY_FILE=memory.json\n"
+            "MAX_MESSAGES=9\nSYSTEM_PROMPT_FILE=system-prompt.txt\n")
+    s = load_settings(write_env(tmp_path, body))
+    assert s.openai_api_key == KEY_20 and s.openai_temperature == 1.25
+    assert (s.openai_timeout, s.host, s.port, s.max_messages) == (45, "localhost", 8080, 9)
+    assert (s.openai_model, s.memory_file, s.system_prompt_file) == ("gpt-4o-mini", "memory.json", "system-prompt.txt")
+
+
+@pytest.mark.parametrize("raw", ["abc", "2610.5", "80", "70000", "-1"])
+def test_port_rejected(tmp_path, raw):
+    with pytest.raises(SettingsError) as info:
+        load_settings(write_env(tmp_path, f"PORT={raw}\n"))
+    assert "PORT" in str(info.value) and "1024" in str(info.value)
+
+
+@pytest.mark.parametrize("raw", ["0.0.0.0", "192.168.1.5", "0:0:0:0:0:0:0:0"])
+def test_host_rejected(tmp_path, raw):
+    with pytest.raises(SettingsError) as info:
+        load_settings(write_env(tmp_path, f"HOST={raw}\n"))
+    assert "HOST" in str(info.value) and "127.0.0.1" in str(info.value)
+
+
+@pytest.mark.parametrize("raw", ["2.5", "-0.1", "abc", "nan", "inf"])
+def test_temperature_rejected(tmp_path, raw):
+    with pytest.raises(SettingsError) as info:
+        load_settings(write_env(tmp_path, f"OPENAI_TEMPERATURE={raw}\n"))
+    assert "OPENAI_TEMPERATURE" in str(info.value) and "2.0" in str(info.value)
+
+
+@pytest.mark.parametrize("key, raw", [("OPENAI_TIMEOUT", "0"), ("OPENAI_TIMEOUT", "301"),
+                                      ("OPENAI_TIMEOUT", "thirty"), ("MAX_MESSAGES", "0"),
+                                      ("MAX_MESSAGES", "51"), ("MAX_MESSAGES", "năm")])
+def test_integer_range_rejected(tmp_path, key, raw):
+    with pytest.raises(SettingsError) as info:
+        load_settings(write_env(tmp_path, f"{key}={raw}\n"))
+    assert key in str(info.value)
+
+
+def test_boundaries_accepted(tmp_path):
+    low = "PORT=1024\nOPENAI_TEMPERATURE=0.0\nOPENAI_TIMEOUT=1\nMAX_MESSAGES=1\n"
+    high = "PORT=65535\nOPENAI_TEMPERATURE=2.0\nOPENAI_TIMEOUT=300\nMAX_MESSAGES=50\n"
+    a, b = (load_settings(write_env(tmp_path, x)) for x in (low, high))
+    assert (a.port, b.port, a.max_messages, b.max_messages) == (1024, 65535, 1, 50)
+    assert (a.openai_temperature, b.openai_temperature) == (0.0, 2.0)
+    assert (a.openai_timeout, b.openai_timeout) == (1, 300)
+
+
+def test_error_message_never_contains_key(tmp_path):
+    with pytest.raises(SettingsError) as info:
+        load_settings(write_env(tmp_path, f"OPENAI_API_KEY={KEY_20}\nPORT=80\n"))
+    assert KEY_20 not in str(info.value) and "xxxx" not in str(info.value)
+
+
+def test_comments_quotes_spaces_ignored(tmp_path):
+    body = "# ghi chu\n\n \nOPENAI_MODEL=\"gpt-4o-mini\"\nOPENAI_TIMEOUT = 30 \n"
+    s = load_settings(write_env(tmp_path, body))
+    assert (s.openai_model, s.openai_timeout) == ("gpt-4o-mini", 30)
+    blank = "OPENAI_API_KEY=\nMEMORY_FILE=  \nSYSTEM_PROMPT_FILE=\n"
+    t = load_settings(write_env(tmp_path, blank))
+    assert (t.openai_api_key, t.memory_file, t.system_prompt_file) == ("", "memory.json", "system-prompt.txt")
+
+
+def test_crlf_bom_and_duplicate_key(tmp_path):
+    body = "\ufeff# ghi chu\r\nOPENAI_MODEL=ten-sai\r\nOPENAI_MODEL=gpt-4o-mini\r\nPORT=2610\r\n"
+    s = load_settings(write_env(tmp_path, body))
+    assert (s.openai_model, s.port) == ("gpt-4o-mini", 2610)
+
+
+def test_does_not_mutate_os_environ(tmp_path):
+    before = dict(os.environ)
+    load_settings(write_env(tmp_path, "PORT=8080\nHOST=localhost\n"))
+    assert dict(os.environ) == before
+```
+
+2. Run `.\.venv\Scripts\Activate.ps1` then `py -m pytest tests/test_load_settings.py -q`. Expected result in the RED state: the collection error `ModuleNotFoundError: No module named 'src.chatbot.config'` for all 11 test functions, `0 passed`, `11 error`. This is RED in the true sense, NOT a RED caused by a wrong configuration. If you see `fixture 'tmp_path' not found` then `pytest` is not installed; handle it per P1 and run again.
+3. Change nothing at this step. Do not create any `__init__.py` file in `config` because B2 does not list one; Python 3 treats a directory without `__init__.py` as a namespace package and can still import it. If the real machine truly cannot import it, stop and report per KILL.1. Also run `(Get-Content tests/test_load_settings.py | Measure-Object -Line).Lines`; the expected result is less than 100, in fact 98.
+
+### First GREEN round: the exception
+
+4. Create `src/chatbot/config/settings_error.py`. Signature: class `SettingsError(Exception)`, empty body, containing only a Vietnamese documentation string with diacritics. Algorithm: none, this is a class with an empty body per the one class one file rule in B2.
+
+```python
+class SettingsError(Exception):
+    """Lỗi cấu hình: giá trị trong tệp .env không hợp lệ theo bảng B3."""
+```
+
+5. Check command: `py -c "from src.chatbot.config.settings_error import SettingsError; print(SettingsError.__name__)"`. Expected result: prints `SettingsError`. This command does NOT start the server.
+6. Run `py -m pytest tests/test_load_settings.py -q`. Expected result: still `0 passed` because `settings` and `load_settings` are still missing. A partial RED is a normal state, NOT an error.
+
+### Second GREEN round: the value class
+
+7. Create `src/chatbot/config/settings.py`. Signature: dataclass `Settings` frozen with exactly nine fields, each field having one named default constant. Algorithm:
+
+```text
+KHAI BÁO tám hằng DEFAULT_* theo cột mặc định của B3
+KHAI BÁO dataclass với frozen=True
+GÁN mặc định cho từng trường từ hằng tương ứng
+KHÔNG đọc tệp, KHÔNG nhập os, KHÔNG nhập dotenv
+```
+
+```python
+from dataclasses import dataclass
+
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_OPENAI_TEMPERATURE = 0.3
+DEFAULT_OPENAI_TIMEOUT = 30
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 2610
+DEFAULT_MEMORY_FILE = "memory.json"
+DEFAULT_MAX_MESSAGES = 5
+DEFAULT_SYSTEM_PROMPT_FILE = "system-prompt.txt"
+
+
+@dataclass(frozen=True)
+class Settings:
+    openai_api_key: str = ""
+    openai_model: str = DEFAULT_OPENAI_MODEL
+    openai_temperature: float = DEFAULT_OPENAI_TEMPERATURE
+    openai_timeout: int = DEFAULT_OPENAI_TIMEOUT
+    host: str = DEFAULT_HOST
+    port: int = DEFAULT_PORT
+    memory_file: str = DEFAULT_MEMORY_FILE
+    max_messages: int = DEFAULT_MAX_MESSAGES
+    system_prompt_file: str = DEFAULT_SYSTEM_PROMPT_FILE
+```
+
+8. Run `py -m pytest tests/test_load_settings.py -q`. Expected result: `0 passed` is still correct because `load_settings` does not exist yet. If any function turns green early, then `load_settings` was left over from a previous run and must be deleted to preserve the TDD order.
+9. Cleanup: count lines with `(Get-Content src/chatbot/config/settings.py | Measure-Object -Line).Lines`; the expected result is less than 100, in fact around 22.
+
+### Third GREEN round: read and validate values
+
+10. Create `src/chatbot/config/load_settings.py`. Algorithm of `load_settings(env_path: Path) -> Settings`: IF `env_path.exists()` then `raw := dotenv_values(env_path, encoding="utf-8-sig")`, ELSE `raw := {}` empty; `host := _text(raw, "HOST", DEFAULT_HOST)`; IF `host` is not in `("127.0.0.1", "localhost")` then raise `SettingsError` naming HOST; RETURN `Settings(...)` with the nine fields, in which the API key goes through `_text` with default `""` and is NOT format-validated, the three integer keys go through `_integer`, one float key goes through `_number`, and the three remaining string keys go through `_text` with their default constants. Algorithm of `_text(raw, key, default)`: IF `raw.get(key)` is `None` return `default`; strip whitespace at both ends; IF still empty return `default`, ELSE return the stripped string. Algorithm of `_number(raw, key, default, low, high)`: build the message once; `text := _text(raw, key, None)`; IF `text` is `None` return `default`; TRY `float(text)`, EXCEPT `ValueError` then raise `SettingsError` with the message already built and `from None`; IF not finite by `math.isfinite` OR less than `low` OR greater than `high` then raise `SettingsError`; ELSE return the number. Algorithm of `_integer(raw, key, default, low, high)`: same as `_number` but BEFORE casting, IF `text.lstrip("+-")` is not all digits then raise `SettingsError`, ensuring `2610.5` is not silently truncated to `2610`. The code below is the runnable version, 73 lines:
+
+```python
+import math
+from pathlib import Path
+
+from dotenv import dotenv_values
+
+from src.chatbot.config.settings import (
+    DEFAULT_HOST, DEFAULT_MAX_MESSAGES, DEFAULT_MEMORY_FILE,
+    DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_TEMPERATURE,
+    DEFAULT_OPENAI_TIMEOUT, DEFAULT_PORT,
+    DEFAULT_SYSTEM_PROMPT_FILE, Settings,
+)
+from src.chatbot.config.settings_error import SettingsError
+
+ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+
+
+def load_settings(env_path: Path) -> Settings:
+    """PRE: env_path là đường dẫn tệp .env, được phép không tồn tại.
+    POST: trả về Settings đóng băng đúng chín trường ở B3.
+    INV: không ghi os.environ; thông điệp lỗi không chứa giá trị khóa API."""
+    raw = dotenv_values(env_path, encoding="utf-8-sig") if env_path.exists() else {}
+    host = _text(raw, "HOST", DEFAULT_HOST)
+    if host not in ALLOWED_HOSTS:
+        raise SettingsError("HOST phải là 127.0.0.1 hoặc localhost, không được dùng địa chỉ khác")
+    return Settings(
+        openai_api_key=_text(raw, "OPENAI_API_KEY", ""),
+        openai_model=_text(raw, "OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        openai_temperature=_number(raw, "OPENAI_TEMPERATURE", DEFAULT_OPENAI_TEMPERATURE, 0.0, 2.0),
+        openai_timeout=_integer(raw, "OPENAI_TIMEOUT", DEFAULT_OPENAI_TIMEOUT, 1, 300),
+        host=host,
+        port=_integer(raw, "PORT", DEFAULT_PORT, 1024, 65535),
+        memory_file=_text(raw, "MEMORY_FILE", DEFAULT_MEMORY_FILE),
+        max_messages=_integer(raw, "MAX_MESSAGES", DEFAULT_MAX_MESSAGES, 1, 50),
+        system_prompt_file=_text(raw, "SYSTEM_PROMPT_FILE", DEFAULT_SYSTEM_PROMPT_FILE),
+    )
+
+
+def _text(raw, key, default):
+    """IF thiếu hoặc rỗng sau cắt: RETURN default. ELSE RETURN chuỗi đã cắt."""
+    value = raw.get(key)
+    if value is None:
+        return default
+    value = value.strip()
+    return value if value else default
+
+
+def _number(raw, key, default, low, high):
+    """Parse số thực trong khoảng; sai ký tự, ngoài khoảng hoặc không hữu hạn đều ném lỗi."""
+    message = f"{key} phải là số trong khoảng {low} đến {high}"
+    text = _text(raw, key, None)
+    if text is None:
+        return default
+    try:
+        number = float(text)
+    except ValueError:
+        raise SettingsError(message) from None
+    if not math.isfinite(number) or not low <= number <= high:
+        raise SettingsError(message)
+    return number
+
+
+def _integer(raw, key, default, low, high):
+    """Parse số nguyên trong khoảng; chữ, số thực, ngoài khoảng đều ném lỗi."""
+    message = f"{key} phải là số nguyên trong khoảng {low} đến {high}"
+    text = _text(raw, key, None)
+    if text is None:
+        return default
+    if not text.lstrip("+-").isdigit():
+        raise SettingsError(message)
+    number = int(text)
+    if not low <= number <= high:
+        raise SettingsError(message)
+    return number
+```
+
+11. Run `py -m pytest tests/test_load_settings.py -q`. Expected result: `26 passed`, `0 failed`. The number 26 comes from 11 test functions, of which four functions use `@pytest.mark.parametrize` with 5, 3, 5 and 6 values respectively, plus seven non-parametrized functions. If green is missing, look up the corresponding ERR below; do NOT loosen the assertions.
+12. Run `py -m pytest -q` for the whole project. Expected result: `26 passed`, no test from P3 onwards is red, because P2 does not touch `domain`, `application`, `infrastructure`, `interface`.
+13. Check the harvest precondition for P6: run `py -c "from pathlib import Path; from src.chatbot.config.load_settings import load_settings; print(load_settings(Path('.env')).port)"`. Expected result: prints `2610` when `.env` has no `PORT` line. This command must NOT start the server.
+
+### CLEANUP round
+
+14. Run the 100-line rule check command from B11: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }`. Expected result: prints NO file name, including `tests/test_load_settings.py`.
+15. Check the dependency arrows: `Select-String -Path src/chatbot/config/*.py -Pattern 'import (flask|langchain|openai|load_dotenv|json|logging)'`. Expected result: NO matching line. `dotenv` is allowed because `dotenv_values` only reads the file and returns a dictionary, it does not write into the process environment.
+16. Check the B2 file list for the `config` directory: `Get-ChildItem src/chatbot/config`. Expected result: exactly three files `load_settings.py`, `settings.py`, `settings_error.py`, no stray files. Finally, review `.env.example` created by P1: every line must have the KEY NAME in uppercase, an equals sign, and a valid sample value per decision table 3d, and the `OPENAI_API_KEY=` line must be LEFT EMPTY after the equals sign.
+
+## 3d. Decision table
+
+Table 1: reading and normalizing raw values from the `.env` file, applied inside `_text` and before the type-check step.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| The `.env` file does not exist | Use all `Settings` defaults, `openai_api_key=""` | No error raised, per B1 step 1 |
+| `env_path` is a directory or unreadable because of permissions | `OSError` bubbles up, not swallowed | Not handled in P2; `run.py` catches per B7 |
+| A line starts with `#` or the line is entirely whitespace | Skipped completely | No error raised |
+| The file has a `utf-8-sig` BOM | Read with `encoding="utf-8-sig"`, key names have no BOM attached | No error raised |
+| The file uses CRLF characters | `dotenv_values` splits lines correctly, no `\r` left in the value | No error raised |
+| The value has double quotes or single quotes | `dotenv_values` strips the quotes first, `_text` only trims whitespace | No error raised |
+| Whitespace around the equals sign | Trimmed before casting, for example ` OPENAI_TIMEOUT = 30 ` gives `30` | No error raised |
+| Trailing whitespace in the value | Trimmed in `_text`, no trailing whitespace characters remain | No error raised |
+| A key appears more than once | The last line wins, `dotenv_values` has already overwritten | No error raised |
+| `OPENAI_API_KEY` empty or entirely whitespace | `Settings.openai_api_key = ""`, can still start up | No error raised |
+| `OPENAI_API_KEY` unusually long or malformed | Kept as-is, not checked in P2; format validation happens in P4 | No error raised |
+| A line with only an equals sign, for example `=abc` | There is no key name so it is skipped, the default is used | No error raised |
+| An unknown key outside the nine keys in B3 | Skipped when building `Settings` | No error raised |
+
+Table 2: validate values by type and range for the eight remaining keys.
+
+| Key | Input value | Required type | Result | Error code |
+|---|---|---|---|---|
+| `OPENAI_MODEL` | missing or empty | string | `"gpt-4o-mini"` | no error |
+| `OPENAI_MODEL` | `"gpt-4o-mini"` with double quotes | string | `"gpt-4o-mini"` without the quotes | no error |
+| `HOST` | `127.0.0.1` or `localhost` | string | kept as-is | no error |
+| `HOST` | `0.0.0.0` | string | rejected | `ERR.4` |
+| `HOST` | `192.168.1.5` | string | rejected because only the loopback address is allowed | `ERR.4` |
+| `HOST` | `0:0:0:0:0:0:0:0` | string | rejected | `ERR.4` |
+| `OPENAI_TEMPERATURE` | missing | float | `0.3` | no error |
+| `OPENAI_TEMPERATURE` | `0.0` or `2.0` | float | kept as-is, boundary included | no error |
+| `OPENAI_TEMPERATURE` | `2.5` or `-0.1` | float | rejected | `ERR.5` |
+| `OPENAI_TEMPERATURE` | `abc` | float | rejected, catches `ValueError` | `ERR.6` |
+| `OPENAI_TEMPERATURE` | `nan` or `inf` | float | rejected because not finite | `ERR.6` |
+| `OPENAI_TIMEOUT` | missing | integer | `30` | no error |
+| `OPENAI_TIMEOUT` | `1` or `300` | integer | kept as-is, boundary included | no error |
+| `OPENAI_TIMEOUT` | `0` | integer | rejected | `ERR.7` |
+| `OPENAI_TIMEOUT` | `301` | integer | rejected | `ERR.7` |
+| `OPENAI_TIMEOUT` | `thirty` | integer | rejected | `ERR.8` |
+| `PORT` | missing | integer | `2610` | no error |
+| `PORT` | `1024` or `65535` | integer | kept as-is, boundary included | no error |
+| `PORT` | `80` | integer | rejected because it is a privileged port | `ERR.9` |
+| `PORT` | `70000` or `-1` | integer | rejected because it is out of range or negative | `ERR.9` |
+| `PORT` | `abc` | integer | rejected | `ERR.10` |
+| `PORT` | `2610.5` | integer | rejected, NOT truncated to `2610` | `ERR.10` |
+| `MAX_MESSAGES` | missing | integer | `5` | no error |
+| `MAX_MESSAGES` | `1` or `50` | integer | kept as-is, boundary included | no error |
+| `MAX_MESSAGES` | `0` | integer | rejected because it would trim the history to empty | `ERR.11` |
+| `MAX_MESSAGES` | `51` | integer | rejected because it exceeds the cost-control cap | `ERR.12` |
+| `MAX_MESSAGES` | `năm` | integer | rejected | `ERR.12` |
+| `MEMORY_FILE` | missing or empty | string | `"memory.json"` | no error |
+| `MEMORY_FILE` | another file name in the B2 tree | string | kept as-is | no error |
+| `SYSTEM_PROMPT_FILE` | missing or empty | string | `"system-prompt.txt"` | no error |
+| `SYSTEM_PROMPT_FILE` | another file name in the B2 tree | string | kept as-is | no error |
+
+Table 3: error messages. Every message is Vietnamese with diacritics, states the KEY NAME and the accepted range, and does NOT contain the API key value per INV I2.
+
+| Error code | Sample message generated by the code |
+|---|---|
+| `ERR.4` | `HOST phải là 127.0.0.1 hoặc localhost, không được dùng địa chỉ khác` |
+| `ERR.5` and `ERR.6` | `OPENAI_TEMPERATURE phải là số trong khoảng 0.0 đến 2.0` |
+| `ERR.7` and `ERR.8` | `OPENAI_TIMEOUT phải là số nguyên trong khoảng 1 đến 300` |
+| `ERR.9` and `ERR.10` | `PORT phải là số nguyên trong khoảng 1024 đến 65535` |
+| `ERR.11` and `ERR.12` | `MAX_MESSAGES phải là số nguyên trong khoảng 1 đến 50` |
+
+Table 4: mapping each mandatory case to a test function and an ERR code, used to prove full coverage before moving to P3.
+
+| Mandatory case | Responsible test function | Related ERR code |
+|---|---|---|
+| missing `.env` | `test_missing_env_uses_defaults` | `ERR.19` |
+| `.env` using CRLF | `test_crlf_bom_and_duplicate_key` | `ERR.13` |
+| a `utf-8-sig`-type BOM | `test_crlf_bom_and_duplicate_key` | `ERR.14` |
+| a value with quotes | `test_comments_quotes_spaces_ignored` | `ERR.15` |
+| whitespace around the equals sign | `test_comments_quotes_spaces_ignored` | `ERR.28` |
+| a comment line | `test_comments_quotes_spaces_ignored` | no error, per table 1 |
+| `PORT` with letters | `test_port_rejected` with `abc` | `ERR.10` |
+| `PORT=80` | `test_port_rejected` with `80` | `ERR.9` |
+| `PORT=70000` | `test_port_rejected` with `70000` | `ERR.9` |
+| `HOST=0.0.0.0` | `test_host_rejected` | `ERR.4` |
+| `OPENAI_TEMPERATURE=2.5` | `test_temperature_rejected` | `ERR.5` |
+| `OPENAI_TEMPERATURE` negative | `test_temperature_rejected` with `-0.1` | `ERR.5` |
+| `OPENAI_TEMPERATURE` with letters | `test_temperature_rejected` with `abc` | `ERR.6` |
+| `OPENAI_TIMEOUT=0` | `test_integer_range_rejected` | `ERR.7` |
+| `OPENAI_TIMEOUT=301` | `test_integer_range_rejected` | `ERR.7` |
+| `MAX_MESSAGES=0` | `test_integer_range_rejected` | `ERR.11` |
+| `MAX_MESSAGES=51` | `test_integer_range_rejected` | `ERR.12` |
+| duplicate key in `.env` | `test_crlf_bom_and_duplicate_key` | `ERR.16` |
+| a malformed key is still kept | `test_missing_env_uses_defaults` with `chu-rac-123` | no error, per P2 scope |
+| the error message does not leak the key | `test_error_message_never_contains_key` | `ERR.18` |
+| the upper and the lower boundary | `test_boundaries_accepted` | no error |
+| no writes to `os.environ` | `test_does_not_mutate_os_environ` | `ERR.3` |
+| reads all nine keys | `test_reads_all_nine_keys` | `ERR.2` |
+
+Table 5: expected state after each step, used to self-check before reporting P2 complete.
+
+| Step | PowerShell command | Expected result | Meaning of the result |
+|---|---|---|---|
+| 2 | `py -m pytest tests/test_load_settings.py -q` | `0 passed`, `11 error` | RED in the true sense, code missing rather than configuration broken |
+| 6 | `py -m pytest tests/test_load_settings.py -q` | `0 passed` | Partial RED, normal midway |
+| 8 | `py -m pytest tests/test_load_settings.py -q` | `0 passed` | `load_settings` still missing, the TDD order is intact |
+| 11 | `py -m pytest tests/test_load_settings.py -q` | `26 passed` | Green for the whole round, the minimum code is enough |
+| 12 | `py -m pytest -q` | `26 passed` | Does not break the tests of other prompts |
+| 13 | `py -c "..."` | prints `2610` | The harvest precondition for P6 is ready |
+| 14 | the 100-line check command from B11 | prints nothing | The B2 rule still holds for both code and tests |
+| 15 | `Select-String ...` | no line matches | The B2 dependency arrows are not broken |
+| 16 | `Get-ChildItem src/chatbot/config` | exactly three files | No stray files appear |
+
+## ERR:
+
+ERR.1 - Symptom: `py -m pytest tests/test_load_settings.py -q` reports `ModuleNotFoundError: No module named 'src.chatbot.config'`. Cause: the `src/chatbot/config` directory has no file yet, or `pytest.ini` lacks `pythonpath = .`. Fix: check `pytest.ini` per P1, then create `settings.py` per step 7 and run again. Related files: `pytest.ini`, `src/chatbot/config/settings.py`.
+
+ERR.2 - Symptom: `AttributeError: 'Settings' object has no attribute 'openai_api_key'` when compared with `Settings()`, or `test_reads_all_nine_keys` is red because a field is missing. Cause: the dataclass declares wrong field names or misses a field. Fix: check against the nine fields in B3, fix the exact names, run again. Related files: `src/chatbot/config/settings.py`.
+
+ERR.3 - Symptom: `test_does_not_mutate_os_environ` is red because after calling `load_settings`, `os.environ` contains `PORT`. Cause: `load_dotenv` was used, whose side effect loads the file into the process environment, breaking INV I1 and damaging the key-writing flow of P5. Fix: drop `load_dotenv` entirely and use only `dotenv_values` as in step 10. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.4 - Symptom: `HOST=0.0.0.0` makes `SettingsError` name `HOST`. Cause: the configuration tries to open the port for every network interface, contrary to B3 and exposing the API key outside the machine. Fix: accept only `127.0.0.1` and `localhost`; fix the `HOST` line in `.env`. Related files: `src/chatbot/config/load_settings.py`, `.env`, `.env.example`.
+
+ERR.5 - Symptom: `OPENAI_TEMPERATURE=2.5` or a negative value is rejected. Cause: it lies outside the range `0.0` to `2.0`. Fix: fix the value in `.env`; if you deliberately want to go outside the range, you must also fix B3 and the tests, do NOT fix a single file only. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.6 - Symptom: `OPENAI_TEMPERATURE=abc` leaks a raw `ValueError` outward instead of `SettingsError`, or `nan` and `inf` slip through as a broken `Settings`. Cause: the cast does not catch the error and does not check for finiteness. Fix: wrap `float` in `try` and re-raise `SettingsError` with `from None`, then check `math.isfinite`, exactly as in step 10. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.7 - Symptom: `OPENAI_TIMEOUT=0` or `OPENAI_TIMEOUT=301` is rejected. Cause: outside the range `1` to `300` seconds. Fix: fix the value in `.env`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.8 - Symptom: `OPENAI_TIMEOUT=thirty` is rejected with a message stating the range `1` to `300`. Cause: the value is not an integer. Fix: use digits or drop the line entirely to use the default `30`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.9 - Symptom: `PORT=80` is rejected, or the project previously ran with `PORT=80`. Cause: a port below 1024 requires privileges, a port above 65535 is meaningless for TCP. Fix: choose a port within the range, for example `2610`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.10 - Symptom: `PORT=abc` or `PORT=2610.5` is rejected; or worse, `2610.5` is silently truncated to `2610`. Cause: using `int(float(...))` without checking the fractional part. Fix: check `text.lstrip("+-").isdigit()` first and only then call `int`, exactly as in step 10. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.11 - Symptom: `MAX_MESSAGES=0` is rejected. Cause: the value `0` leaves `trim_history` with no messages, contrary to B4. Fix: set a minimum of `1`, the default is `5`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.12 - Symptom: `MAX_MESSAGES=51` is rejected. Cause: it exceeds the cap of `50` used to control the size of the history sent to the model service. Fix: reduce it to at most `50`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.13 - Symptom: the BOM and CRLF tests are red with a `SettingsError` about `PORT` because the value read is `"2610\r"`. Cause: the file is read with the default encoding and `\r` is not trimmed. Fix: use `dotenv_values(env_path, encoding="utf-8-sig")` and trim inside `_text`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.14 - Symptom: the key name read is `"\ufeffOPENAI_MODEL"`, so `OPENAI_MODEL` falls back to the default even though the file has another value. Cause: the file was saved by a UTF-8 editor that adds a BOM. Fix: always read with `encoding="utf-8-sig"`. Related files: `src/chatbot/config/load_settings.py`, `.env`.
+
+ERR.15 - Symptom: `OPENAI_MODEL="gpt-4o-mini"` yields a string that still contains quotes inside, leading to an error in P5. Cause: stripping quotes by hand and corrupting a value that `dotenv_values` had already unwrapped. Fix: do not strip double or single quotes yourself; use only `.strip()`. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.16 - Symptom: `OPENAI_MODEL=ten-sai` followed by `OPENAI_MODEL=gpt-4o-mini` yields `"ten-sai"`. Cause: iterating `raw` and keeping the first value. Fix: `dotenv_values` already gives the last value; if you parse it yourself you must overwrite, do NOT use `setdefault`. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.17 - Symptom: `py -m pytest -q` reports `ImportError` about a relative path beyond the root package, or `ModuleNotFoundError: No module named 'src'`. Cause: `pytest.ini` does not yet declare `pythonpath = .`. Fix: fix `pytest.ini` per P1. Do NOT patch it by adding `sys.path` in the test file and do NOT create `__init__.py` files outside the B2 tree. Related files: `pytest.ini`.
+
+ERR.18 - Symptom: the error message prints the real value of `OPENAI_API_KEY` when the file has both a key and a wrong `PORT`. Cause: concatenating the entire content of `raw` into the message. Fix: state only the KEY NAME and the accepted range; `test_error_message_never_contains_key` must be green before moving on. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.19 - Symptom: `load_settings` raises an error when the `.env` file does not exist, making the server crash on the first startup, contrary to B1. Cause: calling `dotenv_values` without a guard branch. Fix: use the conditional expression `dotenv_values(env_path, encoding="utf-8-sig") if env_path.exists() else {}`, exactly as in step 10. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.20 - Symptom: the 100-line check command prints `src/chatbot/config/load_settings.py`. Cause: merging several check branches into one long function. Fix: extract `_text`, `_number`, `_integer` into separate functions in the same file; if it still exceeds, apply KILL.8 and do NOT squeeze many checks into one function. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.21 - Symptom: `py -m pytest tests/test_load_settings.py -q` reports `ModuleNotFoundError: No module named 'dotenv'`. Cause: `python-dotenv` is not yet in `requirements.txt` or the virtual environment does not have it installed. Fix: activate `.\.venv\Scripts\Activate.ps1` then run `py -m pip install -r requirements.txt`, and run again afterwards. Related files: `requirements.txt`.
+
+ERR.22 - Symptom: tests fail randomly on Windows but pass on Linux, or vice versa, with a `.env` file containing `\n`. Cause: `Path.write_text` on Windows translates `\n` into CRLF, so the test files are no longer identical between the two operating systems, contrary to B13. Fix: use `Path.write_bytes(body.encode("utf-8"))` inside the `write_env` function. Related files: `tests/test_load_settings.py`.
+
+ERR.23 - Symptom: `Settings` is not frozen, assigning `settings.port = 3000` reports no error. Cause: missing `frozen=True`. Fix: add `frozen=True`, keeping INV I4. Related files: `src/chatbot/config/settings.py`.
+
+ERR.24 - Symptom: `AttributeError` because some file in `config/` uses `Settings.host` as a constant name, or a default constant has been changed to an empty value. Cause: taking defaults from somewhere other than the `settings.py` file. Fix: read defaults only from the `DEFAULT_*` constants in `settings.py`, keeping a single source of truth. Related files: `src/chatbot/config/load_settings.py`, `src/chatbot/config/settings.py`.
+
+ERR.25 - Symptom: `IsADirectoryError` or `PermissionError` leaks out of `load_settings` when a learner mistakenly points `MEMORY_FILE` or `SYSTEM_PROMPT_FILE` at a directory, or when `.env` is a directory. Cause: only checking `exists()` and not checking `is_file()`. Fix: in P2 it is enough to allow the missing-file branch as in table 1; for the operating-system error branch, catch it at `run.py` per B7 and report in Vietnamese, do not pass the cause up to the interface layer. Related files: `src/chatbot/config/load_settings.py`, `run.py`.
+
+ERR.26 - Symptom: a line in `.env` without an equals sign, for example `ghi chu`, makes key names appear randomly and default values get dropped. Cause: splitting lines by hand instead of letting `dotenv_values` do it. Fix: do not parse the file yourself; read only from the dictionary that `dotenv_values` returns, and build `Settings` only from the nine keys in B3. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.27 - Symptom: merely one unknown key in `.env` prevents the server from starting. Cause: building `Settings` by passing the whole dictionary in, so every unknown key becomes a positional argument error or an extra attribute. Fix: call `Settings` with explicit key names, exactly as in step 10, so that unknown keys are ignored. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.28 - Symptom: `OPENAI_TIMEOUT = 30 ` in `.env` causes `SettingsError`, or `MEMORY_FILE=  ` yields whitespace around the file name. Cause: not trimming whitespace before casting and before using the value as a path. Fix: always trim inside `_text`, and return the default even when the value is empty. Related files: `src/chatbot/config/load_settings.py`, `tests/test_load_settings.py`.
+
+ERR.29 - Symptom: `test_boundaries_accepted` is red with a `SettingsError` message when passing `PORT=1024` or `MAX_MESSAGES=50`. Cause: writing the boundary comparison in the wrong direction, for example using `< low` together with `<= high` inconsistently, or using `range(low + 1, high)` for integer values. Fix: a boundary is the comparison `low <= value <= high` for both integers and floats, exactly as in step 10. Related files: `src/chatbot/config/load_settings.py`.
+
+ERR.30 - Symptom: `Settings` breaks at initialization because it has a `__post_init__` that reads the file itself, or it has `__slots__` that prevent P6 from passing any extra attribute. Cause: moving file-reading logic into the value class and breaking the role of the pure value class of `config`. Fix: keep `settings.py` containing only the default constants and the frozen dataclass; all file operations belong in `load_settings.py`. Related files: `src/chatbot/config/settings.py`.
+
+ERR.31 - Symptom: `.env.example` writes `OPENAI_API_KEY=ban-thu` or writes `PORT=80`, making the learner's copy fail immediately on the first run. Cause: the sample from P1 deviates from the default column of B3. Fix: leave the API key line empty after the equals sign, and make every other line carry exactly the default value verified in step 11. Related files: `.env.example`, `tests/test_load_settings.py`.
+
+ERR.32 - Symptom: `py -m pytest tests/test_load_settings.py -q` reports `SyntaxError` in one of the `config` files after pasting the code. Cause: a comma or a colon was broken while copying, or a leftover Vietnamese line that is not a comment remains. Fix: re-compare the code in step 10 with the canonical version in this prompt, and at the same time count the lines to be sure it stays under 100. Related files: `src/chatbot/config/load_settings.py`, `src/chatbot/config/settings.py`.
+
+ERR.33 - Symptom: the 100-line rule check command from B11 prints `tests/test_load_settings.py`. Cause: too many single-field comparisons were added, or each case was split into its own test function making the file swell. Fix: merge comparisons of the same meaning into one tuple-style assertion, use expressions that yield multiple values for `write_env` when needed, and keep a single test file; do NOT split into a second test file. Related files: `tests/test_load_settings.py`.
+
+ERR.34 - Symptom: `TypeError: _text() missing 1 required positional argument: 'default'` right at the first call inside `test_missing_env_uses_defaults`. Cause: calling `_text(raw, "OPENAI_API_KEY")` and losing the default argument. Fix: pass the default `""` explicitly for the API key and the `DEFAULT_*` constants for the other keys, exactly as in step 10. Related files: `src/chatbot/config/load_settings.py`.
+
+## KILL:
+
+KILL.1 - Stop immediately and report if any error message, log, or exception contains the real value of `OPENAI_API_KEY`. How to detect it: re-read every interpolation expression in `config/` to make sure only KEY NAMES appear, then run `py -m pytest tests/test_load_settings.py -q -k never_contains_key`. Do not fix anything further until it is green.
+
+KILL.2 - Stop immediately if `load_settings` writes anything into `os.environ`. This violates INV I1 and damages the `/api/setup` flow in P6, because the server must keep the key in process memory itself. Verify with `test_does_not_mutate_os_environ`.
+
+KILL.3 - Stop immediately if any import line in `config/` points at `flask`, `langchain`, `openai`, `dotenv.load_dotenv`, `json`, `logging`, or at writing files. `config` is only allowed to import `dataclasses`, `math` to check finiteness, `pathlib.Path` for the type annotation and the existence check, `dotenv.dotenv_values`, plus modules inside the `src.chatbot.config` package. Violating this breaks the dependency arrows of B2.
+
+KILL.4 - Stop immediately if `Settings` is not frozen, if the number of fields differs from nine, or if the field names differ from B3. Fix the `settings.py` file to match before writing anything further.
+
+KILL.5 - Stop immediately if `py -m pytest -q` cannot run because of an import error. Do NOT patch it with `sys.path` in the test file and do NOT create `__init__.py` files outside the B2 tree.
+
+KILL.6 - Stop immediately if any file in `config/` exceeds 100 lines while an underscore-prefixed helper function has not been extracted. The check command from B11 must print nothing.
+
+KILL.7 - Stop immediately if any field is added beyond the nine fields in B3, including derived fields such as `is_dev` or `debug`. An extra field shifts the initialization signature in P6 and breaks the comparison with `Settings()` in the tests.
+
+KILL.8 - Stop immediately and report if `load_settings.py` is forced above 100 lines and no function can be extracted. In this case you must NOT create new files outside the B2 tree and must NOT squeeze many checks into one function; you must present a splitting option to the learner and wait for approval.
+
+KILL.9 - Stop immediately if a test writes a file with `write_text` and content containing `\n`, because the result will differ between Windows and Linux, violating the requirement of running with the same result in B13. Using `write_bytes` is mandatory.
+
+KILL.10 - Stop immediately if you have to create extra files outside the B2 tree, for example a separate defaults file, a separate ranges file, or a second test file for the same `load_settings`, in order to dodge the 100-line rule. Splitting the tests is an architecture decision, not something P2 may do freely.
+
+KILL.11 - Stop immediately if the default values in `Settings()` differ from the default column of B3, even if the tests are still green, because the prompts after P2 will inherit these wrong values and nobody will re-check them. You must compare against B3 by hand and then run `py -m pytest -q` again.
+
+KILL.12 - Stop immediately if `.env.example` deviates from the default column of B3, especially if the `OPENAI_API_KEY` line already carries a sample string. This makes the first-key prompt flow in B1 get skipped right from the sample file, and every later prompt will wrongly believe that configuration is already done.
+
+KILL.13 - Stop immediately if you are forced to modify table B3 or decision table 3d to make the code run. B3 is frozen; changing the blueprint is an architecture decision, you must present it to the learner and update `tests/test_load_settings.py` together with the prompts P4, P5, P6 that depend on it.
+
+KILL.14 - Stop immediately if you have to modify a test just to make it green, for example dropping a value from `@pytest.mark.parametrize`, loosening the message comparison, or changing `SettingsError` into `Exception`. The assertions are a contract with B3 and B9, they must NOT be adjusted for the convenience of the code.
+
+KILL.15 - Stop immediately if any code block in `config/` or in `tests/test_load_settings.py` reaches 100 lines or more, even if it runs. The rule of one file under 100 lines is an acceptance condition in B2 and B9; you must extract functions or merge comparisons before continuing.
+
+# 4. Format:
+
+## 4.1. P2 result file list
+
+After reading P0 and P1, opencode must create exactly the following 5 files (create no extra file, omit none). The table below is a contract: the line count is a hard ceiling; if exceeded, the file must be split.
+
+| # | Path | Type | Max lines | Mandatory content |
+|---|---|---|---|---|
+| 1 | `src/chatbot/config/__init__.py` | code | 0 | entirely empty, import NOTHING |
+| 2 | `src/chatbot/config/settings.py` | code | 30 | frozen dataclass `Settings` with exactly 9 fields |
+| 3 | `src/chatbot/config/settings_error.py` | code | 10 | class `SettingsError(Exception)` |
+| 4 | `src/chatbot/config/load_settings.py` | code | 100 | `DEFAULTS`, `ALLOWED_HOSTS`, `load_settings`, 3 helpers `_as_int` / `_as_float` / `_as_text` |
+| 5 | `tests/test_load_settings.py` | code | 100 | the 9 test groups in B9 |
+
+Do NOT create `tests/__init__.py` (pytest runs without it).
+
+## 4.2. Format of the opencode final report
+
+After the `py -m pytest -q` command, opencode must print exactly four blocks, add no praise, and must not reprint file contents:
+
+```
+## P2 - BÁO CÁO
+Tệp tạo mới      : 5
+Tệp sửa đổi      : 0
+Tệp xoá          : 0
+Độ dài lớn nhất  : <tên tệp> = <n> dòng
+Test : <K> xanh / <T> thất bại trong <t> giây
+Luật 100 dòng    : ĐẠT
+Rò rỉ khóa       : KHÔNG
+os.environ       : KHÔNG đổi
+```
+
+After that comes the per-file status table:
+
+| file | lines | rule < 100 | covered test | status |
+|---|---|---|---|---|
+| `config/settings.py` | 11 | `ĐẠT` | `test_reads_all_nine_keys` | `XANH` |
+| `config/settings_error.py` | 3 | `ĐẠT` | whole error group | `XANH` |
+| `config/load_settings.py` | 62 | `ĐẠT` | 9 groups | `XANH` |
+| `tests/test_load_settings.py` | 89 | `ĐẠT` | - | - |
+| `config/__init__.py` | 0 | `ĐẠT` | - | - |
+
+If any row of the table is `ĐỎ`, opencode must fix it itself and then rerun at most 3 rounds (see P9), and must NOT ask the learner midway.
+
+## 4.3. PowerShell commands used to obtain evidence
+
+```powershell
+py -m pytest tests/test_load_settings.py -q
+py -m pytest -q
+Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+rg -n "OPENAI_API_KEY=" -g "!.env" -g "!.env.example" .
+```
+
+The third command must NOT print any file name. The fourth command may only print `tests/test_load_settings.py` with a `TEST_KEY_` value.
+
+# 5. Example:
+
+## 5.1. `src/chatbot/config/settings.py`
+
+```python
+# src/chatbot/config/settings.py
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Settings:
+    openai_api_key: str
+    openai_model: str
+    openai_temperature: float
+    openai_timeout: int
+    host: str
+    port: int
+    memory_file: str
+    max_messages: int
+    system_prompt_file: str
+```
+
+## 5.2. `src/chatbot/config/settings_error.py`
+
+```python
+# src/chatbot/config/settings_error.py
+class SettingsError(Exception):
+    """Lỗi cấu hình: giá trị trong .env sai ràng buộc. Nêu tên khóa, không nêu khóa API."""
+```
+
+## 5.3. `src/chatbot/config/load_settings.py`
+
+```python
+# src/chatbot/config/load_settings.py
+from pathlib import Path
+
+from dotenv import dotenv_values
+
+from src.chatbot.config.settings import Settings
+from src.chatbot.config.settings_error import SettingsError
+
+DEFAULTS = {
+    "OPENAI_API_KEY": "",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "OPENAI_TEMPERATURE": "0.3",
+    "OPENAI_TIMEOUT": "30",
+    "HOST": "127.0.0.1",
+    "PORT": "2610",
+    "MEMORY_FILE": "memory.json",
+    "MAX_MESSAGES": "5",
+    "SYSTEM_PROMPT_FILE": "system-prompt.txt",
+}
+
+ALLOWED_HOSTS = ("127.0.0.1", "localhost")
+
+
+def _as_text(key: str, raw: str) -> str:
+    value = (raw or "").strip()
+    if value == "":
+        raise SettingsError(f"Khóa {key} không được để trống.")
+    return value
+
+
+def _as_int(key: str, raw: str, low: int, high: int) -> int:
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        raise SettingsError(
+            f"Khóa {key} phải là số nguyên từ {low} đến {high}; "
+            f"giá trị đọc được không phải số nguyên."
+        ) from None
+    if not low <= value <= high:
+        raise SettingsError(
+            f"Khóa {key} phải nằm trong khoảng {low} đến {high}; nhận được {value}."
+        )
+    return value
+
+
+def _as_float(key: str, raw: str, low: float, high: float) -> float:
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        raise SettingsError(
+            f"Khóa {key} phải là số thực từ {low} đến {high}; "
+            f"giá trị đọc được không phải số thực."
+        ) from None
+    if not low <= value <= high:
+        raise SettingsError(
+            f"Khóa {key} phải nằm trong khoảng {low} đến {high}; nhận được {value}."
+        )
+    return value
+
+
+def _read_env(env_path) -> dict:
+    path = Path(env_path)
+    if not path.is_file():
+        return {}
+    values = dotenv_values(path, encoding="utf-8-sig")
+    return {k: v for k, v in values.items() if k}
+
+
+def load_settings(env_path=".env") -> Settings:
+    raw = _read_env(env_path)
+    host = _as_text("HOST", raw.get("HOST", DEFAULTS["HOST"])).lower()
+    if host not in ALLOWED_HOSTS:
+        raise SettingsError(
+            f"Khóa HOST chỉ chấp nhận 127.0.0.1 hoặc localhost; nhận được {host}."
+        )
+    return Settings(
+        openai_api_key=(raw.get("OPENAI_API_KEY", "") or "").strip(),
+        openai_model=_as_text("OPENAI_MODEL", raw.get("OPENAI_MODEL", DEFAULTS["OPENAI_MODEL"])),
+        openai_temperature=_as_float("OPENAI_TEMPERATURE", raw.get("OPENAI_TEMPERATURE", DEFAULTS["OPENAI_TEMPERATURE"]), 0.0, 2.0),
+        openai_timeout=_as_int("OPENAI_TIMEOUT", raw.get("OPENAI_TIMEOUT", DEFAULTS["OPENAI_TIMEOUT"]), 1, 300),
+        host=host,
+        port=_as_int("PORT", raw.get("PORT", DEFAULTS["PORT"]), 1024, 65535),
+        memory_file=_as_text("MEMORY_FILE", raw.get("MEMORY_FILE", DEFAULTS["MEMORY_FILE"])),
+        max_messages=_as_int("MAX_MESSAGES", raw.get("MAX_MESSAGES", DEFAULTS["MAX_MESSAGES"]), 1, 50),
+        system_prompt_file=_as_text("SYSTEM_PROMPT_FILE", raw.get("SYSTEM_PROMPT_FILE", DEFAULTS["SYSTEM_PROMPT_FILE"])),
+    )
+```
+
+## 5.4. `tests/test_load_settings.py`
+
+```python
+# tests/test_load_settings.py
+from pathlib import Path
+
+import pytest
+
+from src.chatbot.config.load_settings import load_settings
+from src.chatbot.config.settings_error import SettingsError
+
+KEY = "TEST_KEY_xxxxxxxxxxxxxxxxxxxx"
+
+
+def _env(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / ".env"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_missing_env_file_uses_defaults(tmp_path):
+    s = load_settings(tmp_path / ".env")
+    assert s.openai_api_key == ""
+    assert s.openai_model == "gpt-4o-mini"
+    assert s.openai_temperature == pytest.approx(0.3)
+    assert s.openai_timeout == 30
+    assert s.host == "127.0.0.1"
+    assert s.port == 2610
+    assert s.memory_file == "memory.json"
+    assert s.max_messages == 5
+    assert s.system_prompt_file == "system-prompt.txt"
+
+
+def test_reads_all_nine_keys(tmp_path):
+    p = _env(tmp_path, "\n".join([
+        f"OPENAI_API_KEY={KEY}", "OPENAI_MODEL=gpt-4o", "OPENAI_TEMPERATURE=1.25",
+        "OPENAI_TIMEOUT=45", "HOST=localhost", "PORT=3000",
+        "MEMORY_FILE=data/hien_thoi.json", "MAX_MESSAGES=9",
+        "SYSTEM_PROMPT_FILE=system.txt"]))
+    s = load_settings(p)
+    assert (s.openai_api_key, s.openai_model, s.openai_timeout) == (KEY, "gpt-4o", 45)
+    assert (s.host, s.port, s.max_messages) == ("localhost", 3000, 9)
+    assert s.memory_file == "data/hien_thoi.json"
+
+
+def test_crlf_and_bom_are_tolerated(tmp_path):
+    p = tmp_path / ".env"
+    p.write_text("﻿PORT=2610\r\nMAX_MESSAGES=7\r\n", encoding="utf-8-sig")
+    s = load_settings(p)
+    assert (s.port, s.max_messages) == (2610, 7)
+
+
+def test_quotes_and_spaces_around_equals(tmp_path):
+    p = _env(tmp_path, '  HOST = "127.0.0.1"  \nMODEL_TEST=1\nOPENAI_MODEL = \'gpt-4o\'\n')
+    s = load_settings(p)
+    assert (s.host, s.openai_model) == ("127.0.0.1", "gpt-4o")
+
+
+def test_comments_and_blank_lines_ignored(tmp_path):
+    p = _env(tmp_path, "# PORT=80\n\n\nPORT=2610  # ghi chú\n\n")
+    assert load_settings(p).port == 2610
+
+
+def test_duplicate_key_last_wins(tmp_path):
+    p = _env(tmp_path, f"OPENAI_API_KEY=TEST_KEY_yyyyyyyyyyyyyyyyyyyy\nOPENAI_API_KEY={KEY}\n")
+    assert load_settings(p).openai_api_key == KEY
+
+
+@pytest.mark.parametrize("bad", ["hai mươi", "80", "70000", "0"])
+def test_bad_port_rejected(tmp_path, bad):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, f"PORT={bad}\n"))
+    assert "PORT" in str(info.value)
+
+
+def test_host_zero_zero_zero_zero_rejected(tmp_path):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, "HOST=0.0.0.0\n"))
+    assert "HOST" in str(info.value) and "127.0.0.1" in str(info.value)
+
+
+@pytest.mark.parametrize("bad", ["2.5", "-0.1", "không phải số"])
+def test_bad_temperature_rejected(tmp_path, bad):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, f"OPENAI_TEMPERATURE={bad}\n"))
+    assert "OPENAI_TEMPERATURE" in str(info.value)
+
+
+@pytest.mark.parametrize("bad", ["0", "301", "abc"])
+def test_bad_timeout_rejected(tmp_path, bad):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, f"OPENAI_TIMEOUT={bad}\n"))
+    assert "OPENAI_TIMEOUT" in str(info.value)
+
+
+@pytest.mark.parametrize("bad", ["0", "51", "x"])
+def test_bad_max_messages_rejected(tmp_path, bad):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, f"MAX_MESSAGES={bad}\n"))
+    assert "MAX_MESSAGES" in str(info.value)
+
+
+def test_blank_text_value_rejected(tmp_path):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, 'OPENAI_MODEL="   "\n'))
+    assert "OPENAI_MODEL" in str(info.value)
+
+
+def test_error_message_never_leaks_api_key(tmp_path):
+    with pytest.raises(SettingsError) as info:
+        load_settings(_env(tmp_path, f"OPENAI_API_KEY={KEY}\nPORT=80\n"))
+    assert "PORT" in str(info.value)
+    assert KEY not in str(info.value)
+
+
+def test_load_settings_does_not_touch_os_environ(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    import os
+    s = load_settings(_env(tmp_path, "OPENAI_MODEL=gpt-4o\n"))
+    assert s.openai_model == "gpt-4o"
+    assert "OPENAI_MODEL" not in os.environ
+```
+
+## 5.5. Sample PowerShell log
+
+```
+PS C:\chatbot> py -m pytest tests/test_load_settings.py -q
+.F......F........                                                    [100%]
+16 failed, 12 passed in 0.61s
+FAILED tests/test_load_settings.py::test_reads_all_nine_keys - AttributeError: 'Settings' object has no attribute 'openai_model'
+FAILED tests/test_load_settings.py::test_error_message_never_leaks_api_key - AssertionError: assert 'TEST_KEY_xxxxxxxxxxxxxxxxxxxx' in str(info.value)
+FAILED tests/test_load_settings.py::test_crlf_and_bom_are_tolerated - SettingsError: Khóa PORT phải là số nguyên
+FAILED tests/test_load_settings.py::test_bad_timeout_rejected - SettingsError: Khóa OPENAI_TIMEOUT phải là số nguyên
+FAILED tests/test_load_settings.py::test_load_settings_does_not_touch_os_environ - assert 'OPENAI_MODEL' in os.environ
+```
+
+Cause and fix: `settings.py` currently has 8 fields instead of 9; `load_settings` prints the raw value of the API key straight into the error message; `_read_env` does not pass `encoding="utf-8-sig"`; `timeout` is assigned as a `float`, so `int("30")` fails on CRLF; and somewhere `os.environ[...] = ...` is being called while loading the configuration.
+
+```
+PS C:\chatbot> py -m pytest tests/test_load_settings.py -q
+........................                                                 [100%]
+28 passed in 0.48s
+
+PS C:\chatbot> py -m pytest -q
+........................                                                 [100%]
+28 passed in 0.52s
+
+PS C:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+PS C:\chatbot>
+
+PS C:\chatbot> rg -n "OPENAI_API_KEY=" -g "!.env" -g "!.env.example" .
+tests/test_load_settings.py:11:KEY = "TEST_KEY_xxxxxxxxxxxxxxxxxxxx"
+PS C:\chatbot>
+```
+
+The RED round must appear BEFORE the GREEN round in the report. Skipping the red round and citing only the final result is forbidden.
+
+# 6. Notices:
+
+- Do NOT modify `os.environ` in `load_settings`: process memory must be left to P5's `EnvApiKeyStore`, otherwise `/api/setup` cannot update the key without a restart.
+- Do NOT use `load_dotenv()` because this function writes into `os.environ` by itself and breaks the first-time key entry flow.
+- Do NOT put an API key value into any error message: the learner pastes a real key into the box, and the error message gets printed to the command-line window.
+- Do NOT validate the provider prefix in `load_settings`: a key that is formally valid but rejected will be caught at P5 with a 401, not here.
+- Do NOT allow `HOST=0.0.0.0`: the platform is a personal machine, and opening the network is a hole that lets the key be read from other machines.
+- Do NOT loosen the `PORT` range below 1024: system ports require privileges, and the learner would have to run with administrator rights.
+- Do NOT use `from __future__ import annotations` together with `dict[str, str]` when types are not yet declared: keep the simple `-> dict` signature so that no error is produced on older Python versions.
+- Do NOT catch broad `Exception` in `_as_int` / `_as_float`: catch only `TypeError` and `ValueError`, otherwise programming errors get swallowed.
+- Do NOT use `except ...:` and then re-raise the same type while losing the context: always `raise ... from None` when the message already says enough.
+- Do NOT print `DEFAULTS` or the whole `raw` dict to the log: that would expose `OPENAI_API_KEY` once the learner has entered a key and restarted.
+- Do NOT omit `encoding="utf-8-sig"` in `dotenv_values`: the `.env` file written by P5 on Windows may carry a BOM; without this argument the first key name gets glued to an invisible character and every default value is ignored.
+- Do NOT omit `.strip()` in `_as_int` / `_as_float` / `_as_text`: values in `.env` often have extra spaces around the equals sign, and without trimming `int()` fails.
+- Do NOT add `.env` to `.gitignore` after P1 has already created it: re-check with the secret-scan command before reporting.
+- Do NOT create extra helper files outside the directory tree in B2: the `_as_*` functions must live in `load_settings.py`.
+- Do NOT exceed 100 lines in any file: if `test_load_settings.py` is longer, use `@pytest.mark.parametrize` to compress it.
+- Do NOT drop the "no key leak" and "does not modify `os.environ`" test groups: these are the two cases that protect the key entry flow of P5 and P6.
+- Do NOT start the server inside the opencode shell: P2 only runs `py -m pytest`, not `py run.py`.
+- Do NOT use `python3`, `curl`, `sudo`, or bash commands: the platform is Windows 11 with PowerShell and `py`.
+- Do NOT report "done" while the 100-line rule command still prints file names.
+- Do NOT write a key string with a provider prefix into any file: every key in the test must be `TEST_KEY_` followed by 20 x letters.
+- Do NOT write unaccented Vietnamese in error messages and in the report: the learner reads the notification right there in the command-line window.
+
+
+Binding rule B24: every prompt in this project must explicitly state how to resume work if opencode stops midway. The resume procedure is fixed: re-paste the most recent prompt unchanged into a fresh session, then re-establish context by reading the files and the last checkpoint before making any new edits; a checkpoint is defined as the state where the full test suite passes, so resumption always targets the last green checkpoint rather than an arbitrary half-finished edit. If the suite cannot run, the checkpoint is the most recent file save that preserves prior passing behavior, and the resuming session must verify it before proceeding. Never re-explain requirements or invent missing steps on resume. Acceptance: a reviewer can take any prompt from the repository, simulate a mid-task interruption, re-paste it, and reach the last passing test checkpoint without asking a clarifying question.
+
+**BINDING RULE B35:** Any code listing exceeding 99 lines constitutes a reference design that must never be pasted as a single file; instead, the builder shall decompose it into modules of at most 99 lines each with exactly one function per file, then update all imports accordingly to maintain correct dependency resolution. The decomposition preserves logical cohesion while enforcing the line limit, ensuring no module exceeds the threshold and no file contains more than one top-level function definition. Acceptance test: given a 150-line reference implementation, the builder produces at least two files each ≤99 lines with one function per file and all imports resolving without errors.
+
+Binding rule on the import root (B36). Every import in every source file, test and listing uses the prefix `src.chatbot.` from the project root, for example `from src.chatbot.domain.errors import UpstreamError`. The form `from chatbot.` is forbidden. Two import names for one module create two copies of it in memory, so an `isinstance` check on an exception class fails across layers and every upstream error (401, 429, timeout, empty reply) becomes a generic HTTP 500. Acceptance: `rg -n "^\s*from chatbot\." src tests run.py` prints nothing.
+# 7. Input:
+
+What the learner provides to opencode before doing P2:
+
+- The `AGENTS.md` produced by P0: read it first, and obey the 7 rules inside it.
+- The directory tree and the `.env.example` file produced by P1: check that the `.env.example` file already has all 9 key lines per B3; if something is missing, report it and do NOT edit P1's file yourself.
+- The B3 table in the blueprint: this is the single source of truth for key names, default values, and valid ranges.
+- The list of the 9 test groups in B9 for `test_load_settings.py`.
+- The list of edge cases in B10 that relate to configuration: missing file, CRLF, BOM, quoted values, spaces around the equals sign, comment lines, wrong `PORT`, wrong `HOST`, wrong `TEMPERATURE`, wrong `TIMEOUT`, wrong `MAX_MESSAGES`, duplicate key, no key leak.
+- The project root folder name, default is `chatbot`.
+
+The API key must NOT be pasted into this conversation and must NOT be written into any file. The learner will enter the real key on the chatbot page on the first run, through the "Nhập khóa API" dialog box; the server receives it, validates its form, and writes it into `.env`. Therefore `OPENAI_API_KEY` in P2 must accept an empty string at startup, and the `.env` file that P2 reads is the file P5 will write, not a file where the learner pasted a key themselves.
+
+If the learner still supplies a real key in the chat, opencode must refuse to write it into a file and must remind them to enter it on the page.
+
+# 8. OKRs:
+
+**O:** Complete P2 (configuration and the `.env` file) following TDD, such that all 9 test groups in B9 are green, every file is under 100 lines, no key leaks, and `os.environ` is not modified.
+
+**KR1:** `py -m pytest -q` returns `28 passed` and `0 failed`; the report must print both the RED round and the GREEN round, and may print only the final result.
+
+**KR2:** Exactly 5 files are created, 0 files outside the list in 4.1, and 0 files deleted or modified from P0 and P1.
+
+**KR3:** The 100-line rule check command (item 4.3) does NOT print any file name; if it does print one, the longest file must be reported with its name and line count in the report.
+
+**KR4:** `Settings` is a frozen dataclass (`frozen=True`) with exactly the 9 listed fields; `dataclasses.FrozenInstanceError` is thrown when a field is reassigned (verify with a `py -c` command in PowerShell, which prints the error name).
+
+**KR5:** `SettingsError` is thrown by exactly the 9 error test groups: 4 `PORT` values, `HOST=0.0.0.0`, 3 `OPENAI_TEMPERATURE` values, 3 `OPENAI_TIMEOUT` values, 3 `MAX_MESSAGES` values, an empty string for a text key; each message carries the key NAME and the valid range.
+
+**KR6:** The secret scan (`rg -n "OPENAI_API_KEY=" -g "!.env" -g "!.env.example" .`) returns only `tests/test_load_settings.py` with a `TEST_KEY_` value followed by 20 x letters; absolutely 0 real keys in code, test, or log.
+
+**KR7:** After `load_settings` runs, `os.environ` is unchanged: the test `test_load_settings_does_not_touch_os_environ` is green, and the source of `load_settings.py` does not contain the string `os.environ` followed by an assignment.
+
+**KR8:** The "no key leak" case is green: with a `.env` containing `TEST_KEY_xxxx...` together with `PORT=80`, the `SettingsError` message contains `PORT` and does NOT contain the `TEST_KEY_xxxx...` string.
+
+**KR9:** An `.env` file written with `utf-8-sig` and CRLF newlines still yields `port == 2610` and `max_messages == 7`, proving that `dotenv_values(..., encoding="utf-8-sig")` was used.
+
+**KR10:** A missing `.env` file raises NO error: `load_settings` returns all 9 fields with the B3 default values, among which `openai_api_key == ""`.
+
+**KR11:** The `py -m pytest -q` runtime is under 5 seconds; no network connection is opened and no model service is called in any test of P2.
+
+**KR12:** opencode ends with exactly the `## P2 - BÁO CÁO` block and the status table of 4.1, every cell is `XANH` or `ĐẠT`, and no praise is attached.
+

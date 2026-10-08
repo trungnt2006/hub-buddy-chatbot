@@ -1,0 +1,2204 @@
+PROMPT P5: infrastructure layer: JSON storage, API key store, LangChain (TDD). Paste the WHOLE text below into opencode in order P0 to P9; paste P5 only after all earlier prompts are green.
+
+# 1. Role:
+Senior software engineering expert, specializing in the durable storage infrastructure layer and external service calls.
+You are the code writer and the test writer for the same specification, with no split of roles.
+You strictly adhere to the finalized directory tree, generating no file outside it.
+You write red tests first, then minimal code to turn the tests green.
+You do not use intuition to guess; every behavior must be verifiable with one specific command.
+You keep every file under 100 lines, with each function or each class lying in exactly one file.
+You speak fully diacriticated Vietnamese in the guidance text, in error messages, and in comments.
+You keep English unchanged for code names, keys, file names, class names, and commands.
+You never let API keys leak into logs, into memory, into responses, or into error messages.
+
+# 2. Context (5W1H):
+
+**What.**
+P5 builds eight files in `src/chatbot/infrastructure/`: `atomic_write_text.py`, `atomic_write_json.py`, `json_memory_repository.py`, `load_system_prompt.py`, `env_api_key_store.py`, `mask_secret.py`, `map_openai_error.py`, `langchain_chat_model.py`. P5 also builds six test files in `tests/`: `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py`. No other file is generated at P5.
+
+**Why.**
+The infrastructure layer is where the three most durable write operations are carried out: writing files without half-measures, saving conversation history without losing messages when many threads run concurrently, and saving API keys without corrupting the configuration file. These three operations decide whether the chatbot runs stably on the first run.
+
+**Who/Where.**
+The reader is a student running Windows 11, using PowerShell, invoking the Python interpreter with the `py` command. Every verification command in P5 runs in PowerShell at the root directory `chatbot/`, that is, the directory containing `run.py`.
+
+**When.**
+P5 sits in the sixth position in the chain of ten prompts. The previous prompt is P4 (the application layer), which already has `validate_api_key`, `send_message`, `reset_conversation` and three stub files in `tests/fakes/`. The next prompt is P6 (the interface layer), which will install `EnvApiKeyStore` and `LangChainChatModel` into `create_app` and into `run.py`. P5 runs after P2 already has `config/settings.py`, and after P3 already has `domain/message.py`, `domain/errors.py` together with the three files in `domain/ports/`.
+
+**How.**
+Each test file is written first and must fail because the implementation code does not exist yet, or because the behavior is not yet conformant with the specification. Then the implementation code is written minimally, the tests are run again, and only failing tests are corrected - never the tests adjusted to suit the code. The green evidence of P5 is the command `py -m pytest -q` run on the six test files named above with all cases PASSED, while at the same time the 100-line check prints out no file.
+
+**Prompt shape.**
+P5 is a long formal specification, consisting of part A and part B. This part A covers the role, the context, the preconditions, the postconditions, the invariants and the glossary. After the glossary, the full blueprint text is inserted, and then part B contains the complete sample code and the verification scenarios.
+
+**Constraints.**
+The position of P5 in the first-time API-key flow is the crucial point. At P6, when the user pastes the key and clicks Save, `configure_api_key` calls `EnvApiKeyStore.save`. `save` must write atomically into `.env` so that the configuration file is not lost when the machine shuts down unexpectedly. Right after that, `LangChainChatModel.reply` must read the key back from `store.get()` at every call turn, so that the chat frame runs immediately after saving without restarting the server. If P5 gets these two points wrong, the whole first-time flow of the blueprint collapses, even though all other tests remain green.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE:
+
+PRE.1. You are standing at the root directory `chatbot/`. Check: `Get-Location` returns a path ending with `chatbot`.
+
+PRE.2. The file `requirements.txt` already has `flask`, `langchain-openai`, `openai`, `python-dotenv`, `pytest`. Check: `py -m pip show langchain-openai` returns an installed version.
+
+PRE.3. The file `pytest.ini` has declared `pythonpath = .` and `testpaths = tests`. Check: `Select-String -Path pytest.ini -Pattern "pythonpath"` returns one line.
+
+PRE.4. The virtual environment is activated. Check: `py -c "import sys; print(sys.prefix)"` returns a path ending with `.venv`.
+
+PRE.5. The following files exist: `src/chatbot/domain/message.py`, `src/chatbot/domain/errors.py`, `src/chatbot/domain/ports/memory_repository.py`, `src/chatbot/domain/ports/chat_model.py`, `src/chatbot/domain/ports/api_key_store.py`. Check: `Test-Path src/chatbot/domain/ports/api_key_store.py` returns `True`.
+
+PRE.6. The file `src/chatbot/config/settings.py` exists and has the data class `Settings` with exactly nine fields, among them `openai_api_key`, `openai_model`, `openai_temperature`, `openai_timeout`. Check: `Select-String -Path src/chatbot/config/settings.py -Pattern "frozen=True"` returns one line.
+
+PRE.7. The three stub files exist: `tests/fakes/fake_memory_repository.py`, `tests/fakes/fake_chat_model.py`, `tests/fakes/fake_api_key_store.py`. Check: `Test-Path tests/fakes/fake_api_key_store.py` returns `True`.
+
+PRE.8. The test suites of P1 through P4 are green before P5 begins. Check: `py -m pytest -q` has no FAILED line.
+
+PRE.9. In `src/chatbot/infrastructure/` no file has yet exceeded 100 lines. Check: the command at PRE.10 prints out no file belonging to this directory.
+
+PRE.10. The file-length check command used throughout, run in PowerShell, must print nothing when every file is under 100 lines:
+
+```powershell
+Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+```
+
+PRE.11. Tests only write into the temporary directory provided by pytest via the `tmp_path` parameter, never into the real `.env` file or the real `memory.json`. Check: `Test-Path .env` must return `False` both before and after running the six test files of P5.
+
+PRE.12. The environment variable `OPENAI_API_KEY` on the student's machine may already exist. Tests must delete it using the `monkeypatch.delenv(..., raising=False)` mechanism so that the real key is never read by mistake. Check: `Select-String -Path tests/test_env_api_key_store.py -Pattern "delenv"` returns at least one line.
+
+PRE.13. The real `system-prompt.txt` file exists but tests must not open that file. Check: `Select-String -Path tests/test_load_system_prompt.py -Pattern "system-prompt.txt"` returns no line.
+
+PRE.14. The machine does not need a real network connection to run the six test files of P5, because the library that calls external services is always replaced by a stub in the test. Check: `Select-String -Path tests/test_langchain_chat_model.py -Pattern "monkeypatch"` returns at least one line.
+
+PRE.15. The directory `tests/fakes/` contains no stub file dedicated to P5, because P5 only reuses the three stubs already created from P4. Check: `(Get-ChildItem tests/fakes -Filter *.py).Count -le 3` returns `True`, or equals the number of stubs P4 created.
+
+POST:
+
+POST.1. Exactly eight implementation files exist in `src/chatbot/infrastructure/` per the list in the What section, plus an empty `__init__.py`, and there is no stray file. Check: `Get-ChildItem src/chatbot/infrastructure -Filter *.py | Select-Object -ExpandProperty Name` returns exactly the nine finalized file names.
+
+POST.2. The six test files of P5 exist and each file is under 100 lines. Check: the command at PRE.10 prints no file inside `tests/`.
+
+POST.3. The command `py -m pytest -q tests/test_atomic_write.py tests/test_json_memory_repository.py tests/test_env_api_key_store.py tests/test_langchain_chat_model.py tests/test_map_openai_error.py tests/test_load_system_prompt.py` ends with all cases PASSED and no case is skipped.
+
+POST.4. The whole test suite is still green after P5. Check: `py -m pytest -q` has no FAILED line and no collection error.
+
+POST.5. Every file in `src/chatbot/infrastructure/` is under 100 lines. Check: the command at PRE.10 prints out no file name.
+
+POST.6. Writing any JSON file always goes through `atomic_write_json`, and `atomic_write_json` only calls `atomic_write_text`. Check: `Select-String -Path src/chatbot/infrastructure/json_memory_repository.py -Pattern "atomic_write_json"` returns exactly one import line.
+
+POST.7. No corrupted temporary file remains after any write, even when the write fails halfway. Check: `Get-ChildItem $env:TEMP -Recurse -Filter *.tmp -ErrorAction SilentlyContinue` in the test working directory returns nothing after running `test_atomic_write.py`.
+
+POST.8. `EnvApiKeyStore.save` preserves every other line of `.env`, replaces or adds exactly one `OPENAI_API_KEY` line, writes atomically, and only then updates process memory. Check: the cases in `test_env_api_key_store.py` about adding a line, replacing a line, keeping other lines, missing file, duplicate lines and Windows-style carriage return characters are all PASSED.
+
+POST.9. `LangChainChatModel.reply` reads the key through `store.get()` at every call turn. Check: the case with the fixed name `test_khoa_duoc_doc_lai_moi_luot` is PASSED, in which the stub's key changes between two turns and the fake model records two different values.
+
+POST.10. `map_openai_error` returns exactly the six finalized pairs in decision table 1. Check: `test_map_openai_error.py` has six cases, one error type per case, all PASSED.
+
+POST.11. `load_system_prompt` never throws an error outward, even when the file is missing, the file is empty, or the file contains bytes that cannot be decoded as UTF-8. Check: `test_load_system_prompt.py` is PASSED for all three cases listed in decision table 4.
+
+POST.12. `mask_secret` is tested in `test_env_api_key_store.py`, generating no new test file outside the finalized directory tree. Check: `Select-String -Path tests/test_env_api_key_store.py -Pattern "mask_secret"` returns at least two lines.
+
+POST.13. `test_domain_purity.py` of P3 is still green after P5 adds code. Check: `py -m pytest -q tests/test_domain_purity.py` PASSED.
+
+POST.14. No real key appears in the code, in the tests, or in `memory.json`. Check: `Select-String -Path src/chatbot/infrastructure/*.py,tests/*.py -Pattern "OPENAI_API_KEY=.{8,}"` returns no line; every key used in tests has the form `TEST_KEY_` followed by twenty x characters.
+
+POST.15. There is no `print()` command in the infrastructure implementation code. Check: `Select-String -Path src/chatbot/infrastructure/*.py -Pattern "print\("` returns no line.
+
+POST.16. The line-ending character is unified in every text file written by P5, with the same result on Windows and on Linux. Check: `Select-String -Path src/chatbot/infrastructure/*.py -Pattern "newline="` returns at least two lines in `atomic_write_text.py` and `env_api_key_store.py`.
+
+POST.17. The same test suite run twice in a row gives identical results, demonstrating that no hidden state remains between two runs. Check: run `py -m pytest -q tests/test_env_api_key_store.py` twice; both runs are PASSED.
+
+POST.18. No `memory.json.corrupt-` backup file is generated in the project directory when running the entire test suite. Check: `Get-ChildItem -Recurse -Filter "memory.json.corrupt-*" | Measure-Object` returns zero.
+
+INV:
+
+INV.1. The DDD architecture is respected: each infrastructure class at P5 implements exactly one port defined in `domain/ports/`, and defines no interface of its own. Consequence: changing a port breaks both the stub tests and the implementation code at the same time.
+
+INV.2. The dependency arrow points only into the domain: `JsonMemoryRepository` implements `MemoryRepository`, `LangChainChatModel` implements `ChatModel`, `EnvApiKeyStore` implements `ApiKeyStore`. No infrastructure file imports the domain from the reverse direction.
+
+INV.3. The TDD discipline is kept: for each function, at least one red case exists before the first line of implementation code, and every case is written before the code.
+
+INV.4. Each function or each class lies in exactly one file. `map_openai_error` and `mask_secret` are two pure functions, one file per function, never merged.
+
+INV.5. Every file is under 100 lines, including test files. Consequence: each test file tests exactly one implementation file or one small group of related pure functions.
+
+INV.6. Every file write is an atomic write: write into a temporary file in the destination directory, close the file, and only then replace the destination file. Consequence: the destination file is either the complete old version or the complete new version, never a half-measure.
+
+INV.7. When a write fails, the temporary file is cleaned up and the original error is thrown back intact, not swallowed and not wrapped into another error.
+
+INV.8. Every read and write of text files uses UTF-8. When writing JSON, always use `ensure_ascii=False` and `indent=2` so that diacriticated Vietnamese and emoji stay intact in the file.
+
+INV.9. The API key exists in only three places: a variable in process memory, the `OPENAI_API_KEY` line in the `.env` file, and a parameter passed to the external-service calling library. It must not appear in `memory.json`, in error messages, in HTTP responses, or in any log line.
+
+INV.10. Every value that needs to be shown to the user or to the log goes through `mask_secret`. The returned value is four asterisks plus the last four characters when the length is twelve or more, otherwise only four asterisks.
+
+INV.11. Configuration always goes through `Settings`. `LangChainChatModel` does not read environment variables directly for the model name, temperature, or timeout.
+
+INV.12. The sole exception to INV.11 is `EnvApiKeyStore`: it is allowed to read and wrap the `OPENAI_API_KEY` variable, because that is its assigned task.
+
+INV.13. `EnvApiKeyStore.get` prefers the `OPENAI_API_KEY` line in the `.env` file when that line has a non-empty value; only if the file is missing, the file has no such line, or that line is empty does it take the value from process memory.
+
+INV.14. `EnvApiKeyStore.save` removes every duplicate `OPENAI_API_KEY` line, keeping exactly one line, and places that line at the position of the first old line if there is one, otherwise appends it to the end of the file.
+
+INV.15. `EnvApiKeyStore.save` normalizes line endings into a pure newline character, even when the old file uses Windows-style carriage returns.
+
+INV.16. `EnvApiKeyStore.save` only updates process memory after `atomic_write_text` returns success. Consequence: if the write fails, both process memory and the file keep their old state.
+
+INV.17. `JsonMemoryRepository` uses exactly one lock for all three functions `get`, `append`, `reset`. Consequence: twenty concurrent writing threads lose no message, and no message is duplicated.
+
+INV.18. `append` only writes when the message list passed in is non-empty, and only writes after having read the current state within the same lock.
+
+INV.19. `JsonMemoryRepository` stores the WHOLE of a session's messages. Truncating the number of messages happens only in the application layer when preparing history for the model, not in the file.
+
+INV.20. `reset` on a session that does not exist yet is a silent success, creating no new file and throwing no error.
+
+INV.21. A corrupt memory file does not crash the application. Mechanism: rename the file to `memory.json.corrupt-<timestamp>` and then start with empty data. If the rename also fails, the system still starts empty.
+
+INV.22. `map_openai_error` is a pure function: the same error object and the same lookup table always give the same pair of status code and message. The order of checks must place authentication errors before rate-limit errors, and rate-limit errors before connection errors.
+
+INV.23. Every message returned to the user is a fully diacriticated Vietnamese string, using punctuation and never ending with an exclamation mark.
+
+INV.24. `LangChainChatModel.reply` rebuilds the prompt template at every call turn, in exactly this order: the system instruction, the history placeholder, and then the user's turn.
+
+INV.25. `LangChainChatModel.reply` maps every `Message` with role `human` into a human message and role `ai` into a machine message, preserving the order and preserving the diacriticated content.
+
+INV.26. Errors from the external-service calling library never escape the infrastructure layer in the form of the original error. Every error is wrapped as `UpstreamError` with the code and message determined by `map_openai_error`.
+
+INV.27. When the model returns empty content or content consisting only of whitespace, `LangChainChatModel.reply` throws `UpstreamError` with code 502 and the notice `empty_reply`. Consequence: the application never writes an empty message into memory.
+
+INV.28. `LangChainChatModel` does not identify `ChatOpenAI` at import time in a way that blocks substitution in tests. Mandatory consequence: in `reply`, the `ChatOpenAI` reference must be resolved from the module namespace at call time, so that tests may substitute a stub.
+
+INV.29. Tests do not depend on execution order. Each case creates its own data in pytest's temporary directory and cleans up after itself via the pytest mechanism.
+
+INV.30. No bash commands are used. Every command in the instruction file and in the result messages is a PowerShell command.
+
+INV.31. No dependencies are added beyond `requirements.txt`, no file is created outside the finalized directory tree, and no local instruction file is added.
+
+**Decision table 1: error mapping of the external-service calling library.**
+
+| thrown error type | returned code | Vietnamese message |
+|---|---|---|
+| `AuthenticationError` | 401 | Khóa API không đúng, nhập lại |
+| `RateLimitError` | 503 | Hệ thống đang quá tải, thử lại sau |
+| `APITimeoutError` | 504 | Mô hình trả lời quá lâu |
+| `APIConnectionError` | 502 | Không kết nối được dịch vụ mô hình |
+| all other types | 500 | Có lỗi không mong đợi |
+| empty content from the model | 502 | Mô hình trả về nội dung rỗng, thử lại |
+
+**Decision table 2: `EnvApiKeyStore.save` according to the state of the `.env` file before writing.**
+
+| file state | action | expected outcome |
+|---|---|---|
+| file missing | create new, write exactly one key line | the file has one `OPENAI_API_KEY` line |
+| empty file | write exactly one key line | the file has one `OPENAI_API_KEY` line |
+| key line with a value | replace exactly that line | other lines kept unchanged |
+| two or more key lines | keep the first line, drop the following lines | exactly one key line remains |
+| empty key line | fill the value into that line | no new line added |
+| no key line | append at the end | other lines kept unchanged |
+| Windows-style carriage return characters | normalize when reading | unified line endings |
+| no write permission | throw the original error back | file and process memory kept unchanged |
+
+**Decision table 3: reading the memory file in `JsonMemoryRepository`.**
+
+| state | action | returned value |
+|---|---|---|
+| file does not exist | write nothing | empty list |
+| file empty or all whitespace | treat as empty | empty list |
+| file contains valid JSON | read by session key | the session's message list |
+| file contains invalid JSON | rename with a suffix then start empty | empty list |
+| valid JSON but not an object | start empty | empty list |
+| element missing a field or with a wrong role | skip that element | the remaining elements |
+
+**Decision table 4: reading the system instruction file in `load_system_prompt`.**
+
+| state | action | returned value |
+|---|---|---|
+| file exists, has content after trimming | return that content intact | the user's system instruction string |
+| file missing | return the Vietnamese default string | the default string |
+| file empty or all whitespace | return the Vietnamese default string | the default string |
+| bytes not decodable as UTF-8 | return the Vietnamese default string | the default string |
+
+**Mandatory execution order.**
+
+1. Read `PRE.1` through `PRE.15` and confirm each condition with the corresponding command.
+2. Write `tests/test_atomic_write.py` first, run it, and observe the failure.
+3. Write `atomic_write_text.py` and then `atomic_write_json.py`, run the tests again until green.
+4. Write `tests/test_json_memory_repository.py` first, including the missing-file case, the corrupt-file case, the diacriticated Vietnamese and emoji case, and the twenty-concurrent-writing-threads case.
+5. Write `json_memory_repository.py`, run the tests again until green.
+6. Write `tests/test_env_api_key_store.py` first, including both the write-denied-permission case and the `mask_secret` test cases.
+7. Write `mask_secret.py` and then `env_api_key_store.py`, run the tests again until green.
+8. Write `tests/test_load_system_prompt.py` and `tests/test_map_openai_error.py` first, then write `load_system_prompt.py` and `map_openai_error.py`.
+9. Write `tests/test_langchain_chat_model.py` first with a stub replacing `ChatOpenAI`, then write `langchain_chat_model.py`.
+10. Run `py -m pytest -q` for the whole suite, run the 100-line command, and stop when every condition in `POST` holds.
+
+## 3b. Short glossary
+
+- **opencode**: a programming assistant running in a command window, reading instructions in English or Vietnamese and then editing files and running commands; in this blueprint opencode is the tool that executes the specification, not a component of the chatbot.
+- **API**: application programming interface, that is, the set of rules for calling and receiving data from an external service; here it is OpenAI's text-reply service.
+- **endpoint**: a concrete path that the API listens on, for example `POST /api/chat`; each endpoint has one method, one request body and one return shape.
+- **venv**: virtual environment, that is, a separate directory containing copies of the project's libraries so as not to mix with other libraries on the machine; here that directory is named `.venv`.
+- **pytest**: the testing library for Python, run with the command `py -m pytest`, using `test_...` functions and fixture mechanisms such as `tmp_path`.
+- **DDD**: domain-driven architecture, in which code is split into domain containing pure business rules, application containing use cases, infrastructure containing concrete techniques, and interface containing the user interface; the technical layers implement the interfaces declared by the domain.
+- **TDD**: test-driven development discipline, that is, writing tests before writing code, with the goal that code exists only at the minimal level needed to turn tests from red to green.
+- **MUI**: the UI component library for React, full name Material UI; here used via direct loading from the content-distribution server, with no code-compilation step.
+- **formal spec**: a formal specification, that is, the way of writing requirements using preconditions, postconditions, invariants and decision rules, so that every proposition can be verified by a machine or by a specific command.
+
+**Requirement rows.**
+
+| id | requirement | prompts | key |
+|---|---|---|---|
+| B3 | Shared class key means HTTP 429 bursts: retry with exponential backoff plus jitter, then a polite user message | P5,P6 | `backoff` |
+| B14 | Every function in its own file, every file under 100 lines, checked by a test | P0,P3,P4,P5,P9 | `100 lines` |
+| B24 | Each prompt states how to resume if opencode stops midway (re-paste rule, checkpoint by tests) | P1..P9 | `resume|checkpoint` |
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation process (TDD)
+
+### Mandatory conventions for all of P5
+
+- PRE.1: P0 has created `AGENTS.md`; P1 has created the B2 directory tree and `pytest.ini` with `pythonpath = src`; `venv` has been activated with `.\.venv\Scripts\Activate.ps1`. Therefore every file under `tests/` imports as `from chatbot.infrastructure.ten_tap import ...`, and under NO circumstances uses `from src.chatbot...`.
+- PRE.2: P2 has `chatbot.config.settings.Settings` frozen with exactly the nine fields at B3; P3 has `chatbot.domain.message.Message`, `chatbot.domain.errors.UpstreamError`, `chatbot.domain.errors.ApiKeyMissing` and the three ports in `chatbot.domain.ports`. Without PRE.2, step 32's test writing will be red for the wrong reason.
+- PRE.3: `langchain-openai`, `openai` and `httpx` are already in `requirements.txt` as declared by P1. If a package is missing, stop at KILL.5; do not fix versions by hand.
+- POST of P5: eight code files exist under `infrastructure/`, each under 100 lines; the six test files in B12 are green; `py -m pytest -q` for the whole project has no red P5 test.
+- INV.1 (secrets): the sample key in tests is ALWAYS `KHOA_MAU = "TEST_KEY_" + "x" * 20` and `KHOA_HAI = "TEST_KEY_" + "y" * 20`. No real key exists in any file of P5, and no key starts with a vendor prefix.
+- INV.2 (layering): every file under `infrastructure/` imports only from `chatbot.domain`, `chatbot.config` and outside packages. Files under `domain/` are not touched by P5, not a single line.
+- INV.3 (writing): every file write goes through `atomic_write_text`. Direct `open(path, "w")` is forbidden because it loses atomicity at B6.
+- INV.4 (short source): each code file under `infrastructure/` has one function or one class; do not pack two ideas into one file.
+- INV.5 (formatting): code files use two blank lines between top-level functions; test files use one blank line between test functions. When this conflicts with INV.4, the hard under-100-line rule of B2 wins.
+- INV.6 (each cycle): every cycle ends with two check commands: the `py -m pytest` command for the file just made, then the 100-line rule check at B11, which must not print any file name.
+- INV.7 (no network leak): every P5 test runs offline. `py -m pytest` must not send a single request outside the machine; if a model service must be simulated, use the fake in the test file, and the end-to-end check uses the fake server per B13.
+
+Glossary - each term is defined exactly once here; the sections below use the keywords only:
+
+| Keyword | Vietnamese meaning |
+|---|---|
+| opencode | code-writing assistant running in a command-line window, the executor of the prompts in this set |
+| API | application programming interface, the entry point for a program to call an external service |
+| endpoint | a concrete API path that a browser or program calls into |
+| venv | virtual Python environment, a dedicated directory holding installed packages so they do not mix with the system |
+| pytest | automated test runner for Python, reads functions starting with `test_` |
+| DDD | architecture split into layers by role, dependency arrows go in one direction only |
+| TDD | writing tests first, seeing red, writing minimal code to go green, then refactoring |
+| MUI | UI component set written by Google, used in P7 |
+| formal spec | formal specification, written as numbered PRE, POST, INV, ERR, KILL propositions |
+
+Line budget for the eight P5 code files, target always under 100 lines:
+
+| file | signature or class | budget |
+|---|---|---|
+| `infrastructure/atomic_write_text.py` | `atomic_write_text(path: Path, text: str) -> None` | 30 lines |
+| `infrastructure/atomic_write_json.py` | `atomic_write_json(path: Path, data: object) -> None` | 15 lines |
+| `infrastructure/json_memory_repository.py` | `JsonMemoryRepository(MemoryRepository)` | 60 lines |
+| `infrastructure/load_system_prompt.py` | `load_system_prompt(path: Path) -> str` | 25 lines |
+| `infrastructure/env_api_key_store.py` | `EnvApiKeyStore(ApiKeyStore)` | 70 lines |
+| `infrastructure/mask_secret.py` | `mask_secret(value: str) -> str` | 12 lines |
+| `infrastructure/map_openai_error.py` | `map_openai_error(exc: Exception) -> tuple[int, str]` | 40 lines |
+| `infrastructure/langchain_chat_model.py` | `LangChainChatModel(ChatModel)` | 60 lines |
+
+### 3c.1 Cycle for `atomic_write_text.py` and `atomic_write_json.py`, steps 1 to 7
+
+**RED CYCLE**
+
+1. Create the file `tests/test_atomic_write.py` BEFORE any infrastructure line exists. Write the trial signatures at the top of the test file: `atomic_write_text(path: Path, text: str) -> None` and `atomic_write_json(path: Path, data: object) -> None`.
+2. POST of this step: six tests in total, all red because no code exists yet, and the test file under 100 lines.
+
+```python
+import json
+import os
+
+import pytest
+
+from src.chatbot.infrastructure.atomic_write_json import atomic_write_json
+from src.chatbot.infrastructure.atomic_write_text import atomic_write_text
+
+
+def _tu_choi_thay_the(*args, **kwargs):
+    raise OSError("không thể thay thế tệp")
+
+
+def test_ghi_tao_thu_muc_cha_va_tap(tmp_path):
+    duong_dan = tmp_path / "thu_muc_con" / "du_lieu.txt"
+    atomic_write_text(duong_dan, "xin chào bạn")
+    assert duong_dan.read_text(encoding="utf-8") == "xin chào bạn"
+
+
+def test_ghi_khong_con_lai_tap_tam(tmp_path):
+    duong_dan = tmp_path / "du_lieu.txt"
+    atomic_write_text(duong_dan, "a")
+    assert [p.name for p in tmp_path.iterdir()] == ["du_lieu.txt"]
+
+
+def test_loi_giua_chung_giu_nguyen_noi_dung_cu(tmp_path, monkeypatch):
+    duong_dan = tmp_path / "du_lieu.txt"
+    atomic_write_text(duong_dan, "noi_dung_cu")
+    monkeypatch.setattr(os, "replace", _tu_choi_thay_the)
+    with pytest.raises(OSError):
+        atomic_write_text(duong_dan, "noi_dung_moi")
+    assert duong_dan.read_text(encoding="utf-8") == "noi_dung_cu"
+
+
+def test_loi_giua_chung_don_tap_tam(tmp_path, monkeypatch):
+    duong_dan = tmp_path / "du_lieu.txt"
+    monkeypatch.setattr(os, "replace", _tu_choi_thay_the)
+    with pytest.raises(OSError):
+        atomic_write_text(duong_dan, "x")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_ghi_json_dung_thu_mot_va_tieng_viet_that(tmp_path):
+    duong_dan = tmp_path / "ket_qua.json"
+    atomic_write_json(duong_dan, {"loi_chuc": "tiếng Việt có dấu"})
+    raw = duong_dan.read_text(encoding="utf-8")
+    assert raw == '{\n  "loi_chuc": "tiếng Việt có dấu"\n}'
+    assert json.loads(raw)["loi_chuc"] == "tiếng Việt có dấu"
+
+
+def test_ghi_json_giu_nguyen_bieu_tuong_von(tmp_path):
+    duong_dan = tmp_path / "ket_qua.json"
+    du_lieu = {"sesion0001": [{"role": "human", "content": "chào 🎉 <script>"}]}
+    atomic_write_json(duong_dan, du_lieu)
+    assert json.loads(duong_dan.read_text(encoding="utf-8")) == du_lieu
+```
+
+3. Check with `py -m pytest tests\test_atomic_write.py -q`. Expected result: `6 failed` with the reason `ModuleNotFoundError: chatbot.infrastructure.atomic_write_text`. Red in the true sense means red because THERE IS NO CODE, not red because the test is wrong.
+
+**GREEN CYCLE**
+
+4. Create `infrastructure/atomic_write_text.py`. Signature `atomic_write_text(path: Path, text: str) -> None`. Import list: `os`, `from pathlib import Path`. Pseudocode algorithm, one step per line:
+
+- B1: `duong_dan := Path(path)`, `thu_muc_cha := duong_dan.parent`.
+- B2: IF `thu_muc_cha` does not exist yet THEN call `mkdir(parents=True, exist_ok=True)`.
+- B3: `tam := thu_muc_cha / (duong_dan.name + ".tmp")`, i.e. the temp file in the SAME DIRECTORY as the target file, because a different directory means `os.replace` does not guarantee the same disk and atomicity is lost.
+- B4: TRY open `tam` with `encoding="utf-8"` and `newline="\n"`, write `text`, close the file.
+- B5: `os.replace(tam, duong_dan)`.
+- B6: CATCH every `Exception` as `e`: IF `tam` exists THEN delete with `missing_ok=True`; RAISE `e` again with a bare `raise` to preserve the traceback.
+- B7: RETURN nothing.
+
+```python
+import os
+from pathlib import Path
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    duong_dan = Path(path)
+    thu_muc_cha = duong_dan.parent
+    if not thu_muc_cha.exists():
+        thu_muc_cha.mkdir(parents=True, exist_ok=True)
+    tam = thu_muc_cha / (duong_dan.name + ".tmp")
+    try:
+        with tam.open("w", encoding="utf-8", newline="\n") as tep:
+            tep.write(text)
+        os.replace(tam, duong_dan)
+    except Exception:
+        tam.unlink(missing_ok=True)
+        raise
+```
+
+5. Create `infrastructure/atomic_write_json.py`. Algorithm: `atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))` then return. Do NOT add `sort_keys`, do NOT add a secondary key, do NOT add a trailing comma, because the file format must match B6 and the test compares raw strings.
+
+```python
+import json
+from pathlib import Path
+
+from src.chatbot.infrastructure.atomic_write_text import atomic_write_text
+
+
+def atomic_write_json(path: Path, data: object) -> None:
+    van_ban = json.dumps(data, ensure_ascii=False, indent=2)
+    atomic_write_text(path, van_ban)
+```
+
+6. Check with `py -m pytest tests\test_atomic_write.py -q`. Expected result: `6 passed`.
+
+**CLEANUP CYCLE**
+
+7. Review three points: the temp file must be in the same directory as the target file; every error must be re-raised as-is so the P6 route maps the code correctly; run the 100-line rule check at B11 for the two files just created, and the command prints nothing.
+
+### 3c.2 Cycle for `mask_secret.py`, steps 8 to 11
+
+**RED CYCLE**
+
+8. Do NOT create a new test file, because B2 and B12 do not list a separate file for this function and no file outside the directory tree may be invented. Add a parameterized test at the end of `tests/test_env_api_key_store.py`, placed AFTER that file exists at step 22, exactly per the content of the second code block at step 22. Trial signature: `mask_secret(value: str) -> str`.
+9. Check with `py -m pytest tests\test_env_api_key_store.py -q -k mask_secret`. Expected result: red because `chatbot.infrastructure.mask_secret` does not exist yet.
+
+**GREEN CYCLE**
+
+10. Create `infrastructure/mask_secret.py`, with no imports. Algorithm: IF `value` is empty OR `len(value) < 12` THEN RETURN `"****"`; otherwise RETURN `"****" + value[-4:]`.
+
+```python
+def mask_secret(value: str) -> str:
+    if len(value) < 12:
+        return "****"
+    return "****" + value[-4:]
+```
+
+11. Hard INV checked by eye and by test: for every `value`, `len(mask_secret(value)) <= 8`, and `mask_secret(value)` does NOT contain eight or more characters of `value` again. Used only for log messages and internal error notices, NOT for returning to the browser. Check with the command at step 27 once the test file is complete.
+
+
+Binding rule on the import root (B36). Every import in every source file, test and listing uses the prefix `src.chatbot.` from the project root, for example `from src.chatbot.domain.errors import UpstreamError`. The form `from chatbot.` is forbidden. Two import names for one module create two copies of it in memory, so an `isinstance` check on an exception class fails across layers and every upstream error (401, 429, timeout, empty reply) becomes a generic HTTP 500. Acceptance: `rg -n "^\s*from chatbot\." src tests run.py` prints nothing.
+### 3c.3 Cycle for `json_memory_repository.py`, steps 12 to 16
+
+**RED CYCLE**
+
+12. Create `tests/test_json_memory_repository.py`, using the real `Message` class from `chatbot.domain.message` and the real `MemoryRepository` class from `chatbot.domain.ports.memory_repository`. POST of this step: ten tests, among them one multithreaded test and one test checking that the memory file contains no key. The test file under 100 lines is assembled from the TWO code blocks below in exactly that order, the first block then the second, with no extra blank line at the join.
+
+```python
+import json
+import threading
+
+from src.chatbot.domain.message import Message
+from src.chatbot.infrastructure.json_memory_repository import JsonMemoryRepository
+
+KHOA_MAU = "TEST_KEY_" + "x" * 20
+
+
+def _repo(tmp_path):
+    return JsonMemoryRepository(tmp_path / "memory.json")
+
+
+def test_get_tra_ve_rong_khi_tap_thieu(tmp_path):
+    assert _repo(tmp_path).get("sesion0001") == []
+
+
+def test_append_roi_get_giu_dung_thu_tu_tin(tmp_path):
+    repo = _repo(tmp_path)
+    repo.append("sesion0001", [Message("human", "chào"), Message("ai", "chào bạn")])
+    nhan = [(m.role, m.content) for m in repo.get("sesion0001")]
+    assert nhan == [("human", "chào"), ("ai", "chào bạn")]
+
+
+def test_append_luu_toan_bo_tin_khong_cat(tmp_path):
+    repo = _repo(tmp_path)
+    for i in range(12):
+        repo.append("sesion0001", [Message("human", f"câu hỏi số {i}")])
+    assert len(repo.get("sesion0001")) == 12
+
+
+def test_reset_chi_xoa_dung_phien_can_xoa(tmp_path):
+    repo = _repo(tmp_path)
+    repo.append("sesion0001", [Message("human", "a")])
+    repo.append("sesion0002", [Message("human", "b")])
+    repo.reset("sesion0001")
+    assert repo.get("sesion0001") == [] and len(repo.get("sesion0002")) == 1
+
+
+def test_reset_phien_chua_ton_tai_la_thanh_cong_im_lang(tmp_path):
+    _repo(tmp_path).reset("khong-co")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_tap_hong_doi_ten_roi_bat_dau_rong(tmp_path):
+    duong_dan = tmp_path / "memory.json"
+    duong_dan.write_text("{đây không phải JSON", encoding="utf-8")
+    repo = JsonMemoryRepository(duong_dan)
+    assert repo.get("sesion0001") == []
+    assert [p.name for p in tmp_path.iterdir()][0].startswith("memory.json.corrupt-")
+    repo.append("sesion0001", [Message("human", "vẫn chạy")])
+    assert len(repo.get("sesion0001")) == 1
+```
+
+```python
+def test_tieng_viet_va_ky_tu_dac_biet_con_lai(tmp_path):
+    duong_dan = tmp_path / "memory.json"
+    repo = JsonMemoryRepository(duong_dan)
+    tin = "tiếng Việt 🎉 <script>"
+    repo.append("sesion0001", [Message("human", tin)])
+    raw = duong_dan.read_text(encoding="utf-8")
+    assert "🎉" in raw and "\\u" not in raw
+    assert repo.get("sesion0001")[0].content == tin
+
+
+def test_hai_muoi_luong_ghi_dong_thoi_khong_mat_tin(tmp_path):
+    repo = _repo(tmp_path)
+
+    def nhan_vien(chi_so):
+        repo.append("sesion0001", [Message("human", f"tin-{chi_so}")])
+
+    luong = [threading.Thread(target=nhan_vien, args=(i,)) for i in range(20)]
+    for t in luong:
+        t.start()
+    for t in luong:
+        t.join()
+    nhan = repo.get("sesion0001")
+    assert len(nhan) == 20
+    assert sorted(m.content for m in nhan) == sorted(f"tin-{i}" for i in range(20))
+
+
+def test_tap_nho_khong_chua_khoa_api(tmp_path):
+    duong_dan = tmp_path / "memory.json"
+    repo = JsonMemoryRepository(duong_dan)
+    repo.append("sesion0001", [Message("human", "chào bạn")])
+    raw = duong_dan.read_text(encoding="utf-8")
+    assert "OPENAI_API_KEY" not in raw and KHOA_MAU not in raw
+
+
+def test_get_bo_qua_ban_ghi_sai_hinh_thuc(tmp_path):
+    duong_dan = tmp_path / "memory.json"
+    du_lieu = {"sesion0001": [
+        {"role": "human", "content": "bản ghi ổn"},
+        {"role": "bot", "content": "sai vai trò"},
+        {"role": "ai", "content": ""}]}
+    duong_dan.write_text(json.dumps(du_lieu, ensure_ascii=False), encoding="utf-8")
+    repo = JsonMemoryRepository(duong_dan)
+    assert [m.content for m in repo.get("sesion0001")] == ["bản ghi ổn"]
+```
+
+13. Check with `py -m pytest tests\test_json_memory_repository.py -q`. Expected result: `10 failed` with the reason `ModuleNotFoundError`.
+
+**GREEN CYCLE**
+
+14. Create `infrastructure/json_memory_repository.py`, class `JsonMemoryRepository(MemoryRepository)`. Import list: `json`, `threading`, `from pathlib import Path`, `from chatbot.domain.message import Message`, `from chatbot.domain.ports.memory_repository import MemoryRepository`, `from chatbot.infrastructure.atomic_write_json import atomic_write_json`. Algorithm:
+
+- Function `__init__(self, path)`: store `Path(path)` and a `threading.Lock` as the instance's own lock.
+- Function `_doc_rong()`: IF the file does not exist THEN RETURN `{}`. TRY `json.loads` with `encoding="utf-8"`. CATCH `JSONDecodeError` OR `UnicodeDecodeError`: rename the file to `memory.json.corrupt-` plus a timestamp, RETURN `{}`. IF the result is not a `dict` THEN RETURN `{}`. RETURN the result.
+- Function `get(session_id)`: WITH the lock: `du_lieu := _doc_rong()`, `FOR EACH ban_ghi IN du_lieu.get(session_id, [])`: IF `role` is in `{"human", "ai"}` AND `content` is a non-empty string THEN build `Message(role=..., content=...)` and append it to the result. RETURN the list.
+- Function `append(session_id, messages)`: WITH the lock: `du_lieu := _doc_rong()`, `nhanh := du_lieu.setdefault(session_id, [])`, `FOR EACH m IN messages`: `nhanh.append({"role": m.role, "content": m.content})`, then `atomic_write_json(self._path, du_lieu)`.
+- Function `reset(session_id)`: WITH the lock: `du_lieu := _doc_rong()`, IF `session_id` is not in `du_lieu` THEN RETURN silently, `del du_lieu[session_id]`, then `atomic_write_json`.
+15. Decisive INV: the lock wraps the ENTIRE read-then-write operation in `append`. Locking only the write part means twenty threads overwrite each other and messages are lost. Check with `py -m pytest tests\test_json_memory_repository.py -q`. Expected result: `10 passed`.
+
+**CLEANUP CYCLE**
+
+16. Run that test file three times in a row to catch flakiness in the multithreaded measurement. If the file exceeds 100 lines, shorten by turning record conversion into the expression `Message(role=..., content=...)` directly inside `get`; do NOT split out a new file beyond B2.
+
+### 3c.4 Cycle for `load_system_prompt.py`, steps 17 to 21
+
+**RED CYCLE**
+
+17. Create `tests/test_load_system_prompt.py`, trial signature `load_system_prompt(path: Path) -> str`:
+
+```python
+from pathlib import Path
+
+from src.chatbot.infrastructure.load_system_prompt import load_system_prompt
+
+
+def test_tap_thieu_tra_ve_mac_dinh_tieng_viet(tmp_path):
+    ket_qua = load_system_prompt(tmp_path / "system-prompt.txt")
+    assert "trợ lý" in ket_qua and "tiếng Việt" in ket_qua
+
+
+def test_tap_rong_tra_ve_mac_dinh(tmp_path):
+    duong_dan = tmp_path / "system-prompt.txt"
+    duong_dan.write_text("", encoding="utf-8")
+    assert "tiếng Việt" in load_system_prompt(duong_dan)
+
+
+def test_tap_chi_co_khoang_trang_tra_ve_mac_dinh(tmp_path):
+    duong_dan = tmp_path / "system-prompt.txt"
+    duong_dan.write_text("   \n\t  \n", encoding="utf-8")
+    assert "tiếng Việt" in load_system_prompt(duong_dan)
+
+
+def test_doc_duoc_tieng_viet_co_dau(tmp_path):
+    duong_dan = tmp_path / "system-prompt.txt"
+    van_ban = "Bạn là Lan, trợ lý học tập.\nTrả lời ngắn gọn."
+    duong_dan.write_text(van_ban, encoding="utf-8")
+    assert load_system_prompt(duong_dan) == van_ban
+
+
+def test_lien_hac_giua_hai_dau(tmp_path):
+    duong_dan = tmp_path / "system-prompt.txt"
+    duong_dan.write_text("\n\n  Nội dung lõi  \n", encoding="utf-8")
+    assert load_system_prompt(duong_dan) == "Nội dung lõi"
+
+
+def test_loi_doc_tap_thi_tra_ve_mac_dinh_khong_sap(tmp_path, monkeypatch):
+    def _loi(*args, **kwargs):
+        raise OSError("tệp đang bị khóa")
+
+    monkeypatch.setattr(Path, "read_text", _loi)
+    assert "tiếng Việt" in load_system_prompt(tmp_path / "system-prompt.txt")
+```
+
+18. Check with `py -m pytest tests\test_load_system_prompt.py -q`. Expected result: `6 failed`.
+
+**GREEN CYCLE**
+
+19. Create `infrastructure/load_system_prompt.py`. Import list: `from pathlib import Path`. Constant `MAC_DINH := "Bạn là trợ lý hỏi đáp. Trả lời ngắn gọn bằng tiếng Việt, rõ ràng, thân thiện."`. Algorithm: TRY reading the file with `encoding="utf-8"`; CATCH `OSError` OR `UnicodeDecodeError` THEN RETURN `MAC_DINH`; `noi_dung := noi_dung.strip()`; IF `noi_dung` is empty THEN RETURN `MAC_DINH`; RETURN `noi_dung`.
+
+```python
+from pathlib import Path
+
+MAC_DINH = "Bạn là trợ lý hỏi đáp. Trả lời ngắn gọn bằng tiếng Việt, rõ ràng, thân thiện."
+
+
+def load_system_prompt(path: Path) -> str:
+    try:
+        noi_dung = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return MAC_DINH
+    noi_dung = noi_dung.strip()
+    return noi_dung or MAC_DINH
+```
+
+20. INV: the function NEVER raises an error outward, and the default string is defined exactly once across all of P5, not copied into the test file. Check with `py -m pytest tests\test_load_system_prompt.py -q`. Expected result: `6 passed`.
+
+**CLEANUP CYCLE**
+
+21. Review: the real `system-prompt.txt` of P8 may be longer than one hundred lines, the 100-line rule does NOT apply to this data file, only to Python files and JavaScript files. The 100-line rule check at B11 must still print nothing.
+
+### 3c.5 Cycle for `env_api_key_store.py`, steps 22 to 27
+
+**RED CYCLE**
+
+22. Create `tests/test_env_api_key_store.py`. Trial signatures: `EnvApiKeyStore(env_path).is_configured() -> bool`, `.get() -> str`, `.save(api_key: str) -> None`. POST of this step: seventeen parameterized check items, five of which are for `mask_secret` per step 8. The test file is assembled from the TWO code blocks below in exactly that order.
+
+```python
+import os
+
+import pytest
+
+from src.chatbot.infrastructure.atomic_write_text import atomic_write_text
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.infrastructure.mask_secret import mask_secret
+
+KHOA_MAU = "TEST_KEY_" + "x" * 20
+KHOA_HAI = "TEST_KEY_" + "y" * 20
+
+
+def _store(tmp_path):
+    return EnvApiKeyStore(tmp_path / ".env")
+
+
+@pytest.mark.parametrize("van_ban, ky_vong", [
+    ("OPENAI_API_KEY=" + KHOA_MAU + "\n", KHOA_MAU),
+    ("PORT=2610\r\nOPENAI_API_KEY=" + KHOA_MAU + "\r\n", KHOA_MAU),
+    ('OPENAI_API_KEY="' + KHOA_MAU + '"\n', KHOA_MAU),
+    ("OPENAI_API_KEY=cũ_1\nOPENAI_API_KEY=" + KHOA_MAU + "\n", KHOA_MAU),
+    ("# chú thích\nOPENAI_API_KEY = " + KHOA_MAU + "\n", KHOA_MAU),
+])
+def test_get_doc_bien_theo_thu_tu_uu_tien(tmp_path, van_ban, ky_vong):
+    duong_dan = tmp_path / ".env"
+    duong_dan.write_bytes(van_ban.encode("utf-8"))
+    assert _store(tmp_path).get() == ky_vong
+
+
+def test_get_rong_khi_thieu_tap_va_khong_co_bien_moi_trong(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert _store(tmp_path).get() == ""
+
+
+def test_is_configured_doi_ngay_sau_khi_luu(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    store = _store(tmp_path)
+    assert store.is_configured() is False
+    store.save(KHOA_MAU)
+    assert store.is_configured() is True
+
+
+def test_save_tao_tap_va_co_dung_mot_dong_khoa(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    duong_dan = tmp_path / ".env"
+    _store(tmp_path).save(KHOA_MAU)
+    assert duong_dan.read_text(encoding="utf-8") == "OPENAI_API_KEY=" + KHOA_MAU + "\n"
+```
+
+```python
+def test_save_thay_dung_dong_khoa_va_giu_dong_khac(tmp_path):
+    duong_dan = tmp_path / ".env"
+    van_ban = "PORT=2610\nOPENAI_API_KEY=giá_trị_cũ\nMAX_MESSAGES=5\n"
+    atomic_write_text(duong_dan, van_ban)
+    _store(tmp_path).save(KHOA_MAU)
+    assert duong_dan.read_text(encoding="utf-8").splitlines() == [
+        "PORT=2610", "OPENAI_API_KEY=" + KHOA_MAU, "MAX_MESSAGES=5"]
+
+
+def test_save_xoa_cac_dong_khoa_trung_lap(tmp_path):
+    duong_dan = tmp_path / ".env"
+    atomic_write_text(duong_dan, "OPENAI_API_KEY=cũ_1\nOPENAI_API_KEY=cũ_2\n")
+    _store(tmp_path).save(KHOA_MAU)
+    dong = [d for d in duong_dan.read_text(encoding="utf-8").splitlines()
+            if d.startswith("OPENAI_API_KEY=")]
+    assert dong == ["OPENAI_API_KEY=" + KHOA_MAU]
+
+
+def test_save_cap_nhat_bien_moi_trong_tien_trinh(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _store(tmp_path).save(KHOA_MAU)
+    assert os.environ["OPENAI_API_KEY"] == KHOA_MAU
+
+
+def test_save_that_bai_khi_bi_tu_choi_quyen_ghi(tmp_path, monkeypatch):
+    duong_dan = tmp_path / ".env"
+    atomic_write_text(duong_dan, "OPENAI_API_KEY=" + KHOA_MAU + "\n")
+
+    def _tu_choi(*args, **kwargs):
+        raise PermissionError("quyền ghi bị từ chối")
+
+    monkeypatch.setattr(os, "replace", _tu_choi)
+    with pytest.raises(PermissionError):
+        _store(tmp_path).save(KHOA_HAI)
+    assert duong_dan.read_text(encoding="utf-8") == "OPENAI_API_KEY=" + KHOA_MAU + "\n"
+    assert list(tmp_path.iterdir()) == [duong_dan]
+
+
+@pytest.mark.parametrize("gia_tri, ky_vong", [
+    ("", "****"),
+    ("abc", "****"),
+    ("x" * 11, "****"),
+    (KHOA_MAU, "****" + KHOA_MAU[-4:]),
+    (KHOA_HAI, "****" + KHOA_HAI[-4:]),
+])
+def test_mask_secret(gia_tri, ky_vong):
+    che = mask_secret(gia_tri)
+    assert che == ky_vong
+    assert gia_tri not in che or che == "****"
+```
+
+23. Check with `py -m pytest tests\test_env_api_key_store.py -q`. Expected result: `17 failed` because `chatbot.infrastructure.env_api_key_store` and `chatbot.infrastructure.mask_secret` are missing.
+
+**GREEN CYCLE**
+
+24. In `infrastructure/env_api_key_store.py`, class `EnvApiKeyStore(ApiKeyStore)`, constant `TEN_KHOA := "OPENAI_API_KEY"`. Import list: `os`, `from pathlib import Path`, `from chatbot.domain.ports.api_key_store import ApiKeyStore`, `from chatbot.infrastructure.atomic_write_text import atomic_write_text`. Algorithm:
+
+- Function `__init__(self, env_path)`: store `Path(env_path)`.
+- Function `_la_dong_khoa(dong)`: strip leading and trailing whitespace, then compare the NAME PART before the equals sign with `TEN_KHOA`; return the value with double quotes peeled off if it matches, otherwise return `None`.
+- Function `_dong_khoa()`: if the file exists then `FOR EACH dong IN read_text(encoding="utf-8").splitlines()`: `gia := _la_dong_khoa(dong)`; IF `gia` is not `None` THEN `ket_qua := gia`, i.e. the LAST line overrides the previous one. After the loop, if there is a result then RETURN it; otherwise RETURN `os.environ.get(TEN_KHOA, "")`.
+- Function `get()`: RETURN `_dong_khoa()`.
+- Function `is_configured()`: RETURN `self.get() != ""`.
+- Function `save(api_key)`: `dong_moi := TEN_KHOA + "=" + api_key`; the old content is an empty string if the file does not exist yet; split lines with `splitlines()`; `FOR EACH dong`: if it is the first key line then replace it with `dong_moi` and mark as replaced; if it is another key line then drop it; keep every other line, including comment lines; if no key line exists yet then append `dong_moi` at the end; `atomic_write_text(self._path, "\n".join(dong) + "\n")`; `os.environ[TEN_KHOA] := api_key` is the LAST step, running only after `os.replace` returns.
+25. Decisive INV: `save` NEVER leaves a half-done file, and `os.environ` changes only after a successful write. If `atomic_write_text` raises, `os.environ` keeps its old value and the `.env` file keeps its old content. Check with `py -m pytest tests\test_env_api_key_store.py -q`. Expected result: `17 passed`.
+
+**CLEANUP CYCLE**
+
+26. Review three points: the read rule is last key line wins, the write rule is exactly one key line remains; double quotes and the `\r` character must be fully peeled off; the file always writes ending with a single newline character.
+27. Run the test file twice to confirm `os.environ` is cleanly restored by `monkeypatch` and the test does not depend on run order, and also run `py -m pytest tests\test_env_api_key_store.py -q -k mask_secret` to confirm the five items of step 11 are green.
+
+### 3c.6 Cycle for `map_openai_error.py`, steps 28 to 31
+
+**RED CYCLE**
+
+28. Create `tests/test_map_openai_error.py`, trial signature `map_openai_error(exc: Exception) -> tuple[int, str]`:
+
+```python
+import httpx
+from openai import (APIConnectionError, APIStatusError, APITimeoutError,
+                    AuthenticationError, RateLimitError)
+
+from src.chatbot.infrastructure.map_openai_error import map_openai_error
+
+URL = "https://api.openai.com/v1/chat/completions"
+KHOA_MAU = "TEST_KEY_" + "x" * 20
+
+
+def _loi(co_lop, trang_thai=None):
+    yeu_cau = httpx.Request("POST", URL)
+    if trang_thai is None:
+        return co_lop(request=yeu_cau)
+    tra_loi = httpx.Response(trang_thai, request=yeu_cau)
+    return co_lop("lỗi mô phỏng", response=tra_loi, body=None)
+
+
+def test_loai_xac_thuc_ve_401():
+    assert map_openai_error(_loi(AuthenticationError, 401)) == (
+        401, "Khóa API không đúng, nhập lại")
+
+
+def test_loai_quan_ta_ve_503():
+    ma, thong_diep = map_openai_error(_loi(RateLimitError, 429))
+    assert ma == 503 and "quá tải" in thong_diep
+
+
+def test_loai_heo_tim_ve_504():
+    assert map_openai_error(_loi(APITimeoutError)) == (
+        504, "Mô hình trả lời quá lâu")
+
+
+def test_loai_ket_noi_ve_502():
+    assert map_openai_error(_loi(APIConnectionError)) == (
+        502, "Không kết nối được dịch vụ mô hình")
+
+
+def test_loai_trang_thai_khac_ve_500():
+    assert map_openai_error(_loi(APIStatusError, 500)) == (
+        500, "Có lỗi không mong đợi")
+
+
+def test_ngoai_lev_lan_ve_500():
+    assert map_openai_error(RuntimeError("lỗi lạ")) == (500, "Có lỗi không mong đợi")
+
+
+def test_thong_diep_khong_chua_khoa():
+    loi = AuthenticationError("lỗi", response=httpx.Response(
+        401, request=httpx.Request("POST", URL)), body=None)
+    loi.api_key = KHOA_MAU
+    ma, thong_diep = map_openai_error(loi)
+    assert ma == 401 and KHOA_MAU not in thong_diep
+```
+
+29. Check with `py -m pytest tests\test_map_openai_error.py -q`. Expected result: `7 failed`.
+
+**GREEN CYCLE**
+
+30. Create `infrastructure/map_openai_error.py`. Algorithm checked in order, do NOT reorder: take `ma_trang_thai` from `getattr(exc, "status_code", None)`, if empty then take it from `getattr(getattr(exc, "response", None), "status_code", None)`; build a class-name list from the MRO of `type(exc)`. IF a name contains `AuthenticationError` OR `ma_trang_thai == 401` THEN RETURN `(401, "Khóa API không đúng, nhập lại")`. IF a name contains `RateLimitError` OR `ma_trang_thai == 429` THEN RETURN `(503, "Hệ thống đang quá tải, thử lại sau")`. IF a name contains `Timeout` THEN RETURN `(504, "Mô hình trả lời quá lâu")`. IF a name contains `Connection` THEN RETURN `(502, "Không kết nối được dịch vụ mô hình")`. Otherwise RETURN `(500, "Có lỗi không mong đợi")`.
+
+```python
+def map_openai_error(exc: Exception) -> tuple[int, str]:
+    ma = getattr(exc, "status_code", None)
+    if ma is None:
+        ma = getattr(getattr(exc, "response", None), "status_code", None)
+    ten_lop = [k.__name__ for k in type(exc).__mro__]
+    if "AuthenticationError" in ten_lop or ma == 401:
+        return 401, "Khóa API không đúng, nhập lại"
+    if "RateLimitError" in ten_lop or ma == 429:
+        return 503, "Hệ thống đang quá tải, thử lại sau"
+    if any("Timeout" in ten for ten in ten_lop):
+        return 504, "Mô hình trả lời quá lâu"
+    if any("Connection" in ten for ten in ten_lop):
+        return 502, "Không kết nối được dịch vụ mô hình"
+    return 500, "Có lỗi không mong đợi"
+```
+
+31. Secret INV: the returned message is a Vietnamese constant, do NOT concatenate `str(exc)` into it, because `str(exc)` of an authentication error may contain the beginning of the key. Check with `py -m pytest tests\test_map_openai_error.py -q`. Expected result: `7 passed`.
+
+### 3c.7 Cycle for `langchain_chat_model.py`, steps 32 to 36
+
+**RED CYCLE**
+
+32. Create `tests/test_langchain_chat_model.py`. The fake `ChatOpenAIGia` is placed INSIDE the test file, because B2 has no fake file for this class and no extra file may be invented. The fake MUST inherit `Runnable` from `langchain_core.runnables` and declare fields with explicit data types, because the piping `prompt | llm` in the code only accepts a `Runnable` object; shared state is kept in the dict `TRANG_THAI` so as not to collide with the library's field mechanism. The test file is assembled from the TWO code blocks below in exactly that order.
+
+```python
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import Runnable
+
+from src.chatbot.config.settings import Settings
+from src.chatbot.domain.errors import ApiKeyMissing, UpstreamError
+from src.chatbot.domain.message import Message
+from src.chatbot.infrastructure import langchain_chat_model as lc
+from src.chatbot.infrastructure.langchain_chat_model import LangChainChatModel
+
+KHOA_MAU = "TEST_KEY_" + "x" * 20
+KHOA_HAI = "TEST_KEY_" + "y" * 20
+TRANG_THAI = {"loi": None, "noi_dung": "chào bạn", "ban_gia": []}
+
+
+class StoreGia:
+    def __init__(self, gia_tri=""):
+        self.gia_tri = gia_tri
+
+    def is_configured(self):
+        return bool(self.gia_tri)
+
+    def get(self):
+        return self.gia_tri
+
+    def save(self, khoa):
+        self.gia_tri = khoa
+
+
+class ChatOpenAIGia(Runnable):
+    model: str = ""
+    temperature: float = 0.0
+    timeout: int = 0
+    api_key: str = ""
+    tin_nhan: list = []
+
+    def invoke(self, input, config=None, **kwargs):
+        self.tin_nhan.append(input)
+        if TRANG_THAI["loi"] is not None:
+            raise TRANG_THAI["loi"]
+        return AIMessage(content=TRANG_THAI["noi_dung"])
+
+
+def _tao_ban_gia(**th_so):
+    ban_gia = ChatOpenAIGia(**th_so)
+    TRANG_THAI["ban_gia"].append(ban_gia)
+    return ban_gia
+
+
+def _settings():
+    return Settings(openai_api_key="", openai_model="gpt-4o-mini",
+                     openai_temperature=0.3, openai_timeout=30,
+                     host="127.0.0.1", port=2610, memory_file="memory.json",
+                     max_messages=5, system_prompt_file="system-prompt.txt")
+
+
+@pytest.fixture(autouse=True)
+def cai_dat_ban_gia(monkeypatch):
+    TRANG_THAI["loi"] = None
+    TRANG_THAI["noi_dung"] = "chào bạn"
+    TRANG_THAI["ban_gia"] = []
+    monkeypatch.setattr(lc, "ChatOpenAI", _tao_ban_gia)
+```
+
+```python
+def _model(gia_tri_khoa=KHOA_MAU):
+    return LangChainChatModel(_settings(), StoreGia(gia_tri_khoa))
+
+
+def test_reply_tra_ve_chuoi_noi_dung():
+    assert _model().reply("bạn là trợ lý", [], "chào") == "chào bạn"
+
+
+def test_reply_truyen_dung_tham_so_mau():
+    _model().reply("bạn là trợ lý", [], "chào")
+    ban_gia = TRANG_THAI["ban_gia"][0]
+    assert ban_gia.model == "gpt-4o-mini"
+    assert ban_gia.temperature == 0.3 and ban_gia.timeout == 30
+
+
+def test_reply_doc_khoa_lai_moi_luot():
+    store = StoreGia(KHOA_MAU)
+    mo_hinh = LangChainChatModel(_settings(), store)
+    mo_hinh.reply("bạn là trợ lý", [], "chào")
+    store.save(KHOA_HAI)
+    mo_hinh.reply("bạn là trợ lý", [], "chào lần nữa")
+    assert [b.api_key for b in TRANG_THAI["ban_gia"]] == [KHOA_MAU, KHOA_HAI]
+
+
+def test_reply_dung_thu_tu_tin_va_kieu_tin():
+    lich_su = [Message("human", "tin cũ"), Message("ai", "trả lời cũ")]
+    _model().reply("bạn là trợ lý", lich_su, "tin mới")
+    tin = TRANG_THAI["ban_gia"][0].tin_nhan[0]
+    assert [t.content for t in tin] == [
+        "bạn là trợ lý", "tin cũ", "trả lời cũ", "tin mới"]
+    assert [type(t) for t in tin] == [
+        SystemMessage, HumanMessage, AIMessage, HumanMessage]
+
+
+def test_reply_khong_co_khoa_bao_loi_thieu_khoa():
+    with pytest.raises(ApiKeyMissing):
+        _model("").reply("bạn là trợ lý", [], "chào")
+
+
+def test_reply_dung_luong_goi_rieng_khong_dung_lai():
+    mo_hinh = _model()
+    mo_hinh.reply("bạn là trợ lý", [Message("human", "cũ")], "mới một")
+    mo_hinh.reply("bạn là trợ lý", [Message("human", "cũ")], "mới hai")
+    assert len(TRANG_THAI["ban_gia"]) == 2
+    assert [len(b.tin_nhan) for b in TRANG_THAI["ban_gia"]] == [1, 1]
+
+
+def test_tra_loi_rong_bao_loi_502():
+    TRANG_THAI["noi_dung"] = "   "
+    with pytest.raises(UpstreamError) as loi:
+        _model().reply("bạn là trợ lý", [], "chào")
+    assert loi.value.status == 502 and loi.value.message == "empty_reply"
+
+
+def test_loi_chung_bien_thanh_loi_500():
+    TRANG_THAI["loi"] = RuntimeError("hỏng kết nối nội bộ")
+    with pytest.raises(UpstreamError) as loi:
+        _model().reply("bạn là trợ lý", [], "chào")
+    assert loi.value.status == 500
+```
+
+33. Check with `py -m pytest tests\test_langchain_chat_model.py -q`. Expected result: `8 failed`.
+
+**GREEN CYCLE**
+
+34. Create `infrastructure/langchain_chat_model.py`, class `LangChainChatModel(ChatModel)`. Import list: `from langchain_core.messages import AIMessage, HumanMessage`, `from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder`, `from langchain_openai import ChatOpenAI`, `from chatbot.domain.errors import ApiKeyMissing, UpstreamError`, `from chatbot.domain.message import Message`, `from chatbot.domain.ports.chat_model import ChatModel`, `from chatbot.infrastructure.map_openai_error import map_openai_error`. Algorithm of `reply(self, system_prompt, history, user_text)`, in exactly this order:
+
+- R1: `khoa := self._store.get()`.
+- R2: IF `khoa` is empty THEN RAISE `ApiKeyMissing`, stop before calling the model.
+- R3: `mau := ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`.
+- R4: `mo_hinh := ChatOpenAI(model=self._settings.openai_model, temperature=self._settings.openai_temperature, timeout=self._settings.openai_timeout, api_key=khoa)`, i.e. built FRESH on every turn.
+- R5: `lich_su := []`; `FOR EACH m IN history`: IF `m.role == "human"` THEN `lich_su.append(HumanMessage(content=m.content))` ELSE `lich_su.append(AIMessage(content=m.content))`.
+- R6: TRY `ket_qua := (mau | mo_hinh).invoke({"history": lich_su, "input": user_text})`.
+- R7: CATCH `UpstreamError` THEN RAISE it back unchanged.
+- R8: CATCH `Exception e` THEN `(ma, thong_diep) := map_openai_error(e)` then RAISE `UpstreamError(ma, thong_diep) FROM e`.
+- R9: `noi_dung := (getattr(ket_qua, "content", "") or "").strip()`.
+- R10: IF `noi_dung` is empty THEN RAISE `UpstreamError(502, "empty_reply")`.
+- R11: RETURN `noi_dung`.
+35. Decisive INV: `reply` builds the prompt template and reads the key on EVERY TURN, so after `POST /api/setup` the user can chat immediately without restarting the server. The machine-readable code `empty_reply` is turned by P6 into `{"error": "empty_reply", "message": "..."}`.
+
+**CLEANUP CYCLE**
+
+36. Check with `py -m pytest tests\test_langchain_chat_model.py -q`. Expected result: `8 passed`. Review additionally: do NOT touch `OPENAI_BASE_URL`, because B13 leaves this variable alone for the end-to-end check; do NOT write the model service address into product code; every exception raised by the model must go through `map_openai_error` before leaving the layer.
+
+### 3c.8 Summary cycle and key review, steps 37 to 42
+
+37. Run all six files: `py -m pytest tests\test_atomic_write.py tests\test_json_memory_repository.py tests\test_env_api_key_store.py tests\test_langchain_chat_model.py tests\test_map_openai_error.py tests\test_load_system_prompt.py -q`. Expected result: `54 passed`.
+38. Run everything with `py -m pytest -q`. No P5 test may be red because other parts are unfinished; if red, that is a fault of P0 through P4, record and report it, do not spread the fix into other layers.
+39. Run the 100-line rule check at B11, which must not print any file name.
+40. Review keys with `Select-String -Path src\chatbot\infrastructure\*.py, tests\test_*.py -Pattern 'api_key' -CaseSensitive:$false` then read each returned line: only the constant name `TEN_KHOA`, the variables `KHOA_MAU`, `KHOA_HAI`, and the parameter name `api_key` may be seen. Any line containing a concrete key value violates KILL.1.
+41. Another secret review: confirm that no file in the sample `memory.json` and the sample `.env` contains a key; confirm `mask_secret` is used on every log path in P5.
+42. Stability check: run `py -m pytest -q` twice, the results must be identical, no test flickering red.
+
+## 3d. Decision tables
+
+Table D1. `atomic_write_text` and `atomic_write_json`.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| Parent directory does not exist | Create the parent directory then write | none |
+| Target file does not exist | Create it via a temp file then `os.replace` | none |
+| `os.replace` fails | Delete the temp file, the old file stays intact | re-raise the original `OSError` |
+| Temp file write fails midway | Delete the half-written temp file, the old file stays intact | re-raise the original `OSError` |
+| Data contains Vietnamese, emoji, `<script>` tags | Write real UTF-8, no `\uXXXX` | none |
+| File open on Windows | Write `newline="\n"`, no CRLF generated | none |
+| `atomic_write_json` receives a dict or list | `indent=2`, `ensure_ascii=False`, key order preserved | none |
+
+Table D2. `JsonMemoryRepository`.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `memory.json` does not exist | `get` returns `[]` | none |
+| Malformed JSON | Rename to `memory.json.corrupt-<timestamp>`, start empty | none, only writes a warning with the key masked |
+| File empty in bytes | Treat as empty, do NOT rename | none |
+| Valid JSON but not an object at the top level | Treat as empty | none |
+| A record has a wrong `role` or empty `content` | Skip exactly that record, keep valid records | none |
+| `append` for a new session | Create a new branch in the object | none |
+| `append` with a history of 12 messages | Store all 12 messages, do NOT truncate | none |
+| `reset` for a session not present | Do not write the file | none |
+| Twenty threads writing concurrently to the same session | All twenty messages present, none lost, none duplicated | none |
+| The directory containing `memory.json` does not exist | Create the directory then write | none |
+| A message with accented Vietnamese and special characters | Stored verbatim as a string | none |
+| An API key inside message content | Still stored verbatim, but no system key is written along with it | none |
+
+Table D3. `EnvApiKeyStore`.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `.env` file missing, `os.environ` has the key | `get` returns the key from `os.environ` | none |
+| `.env` file missing, `os.environ` has nothing either | `get` returns `""`, `is_configured` is `False` | none |
+| Line ends with CRLF | Drop the `\r`, read the correct value | none |
+| Multiple `OPENAI_API_KEY` lines when reading | The LAST line wins | none |
+| Value wrapped in double quotes | Quotes peeled off | none |
+| Whitespace around the equals sign | The key is still recognized | none |
+| `save` when the file does not exist yet | Create the file with exactly one key line | none |
+| `save` when a key line already exists | Replace in place, keep the order of other lines | none |
+| `save` when there are multiple key lines | Exactly one key line remains | none |
+| After `save` | `os.environ` updated, chatting works immediately | none |
+| Write permission denied | Old file stays intact, no leftover temp file, `os.environ` unchanged | re-raise `PermissionError` |
+| `save` receives an empty string or whitespace | NOT accepted at this layer, blocked earlier in `validate_api_key` | `InvalidApiKey` |
+
+Table D4. `map_openai_error` and `load_system_prompt`.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `AuthenticationError` or code 401 | `(401, "Khóa API không đúng, nhập lại")` | none |
+| `RateLimitError` or code 429 | `(503, "Hệ thống đang quá tải, thử lại sau")` | none |
+| Class name contains `Timeout` | `(504, "Mô hình trả lời quá lâu")` | none |
+| Class name contains `Connection` | `(502, "Không kết nối được dịch vụ mô hình")` | none |
+| A strange subclass of `APIStatusError`, e.g. 500 | `(500, "Có lỗi không mong đợi")` | none |
+| Exception not belonging to the `openai` package | `(500, "Có lỗi không mong đợi")` | none |
+| Exception carries `api_key` as an attribute | The message does NOT contain the key | none |
+| `system-prompt.txt` missing, empty, or whitespace only | Default Vietnamese string with diacritics | none |
+| `system-prompt.txt` unreadable | Default string | none, error swallowed |
+
+Table D5. `LangChainChatModel.reply`.
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| Empty key in the store | Stop before calling the model | `ApiKeyMissing` |
+| Key just saved on the previous turn | This turn uses the new key, no restart needed | none |
+| History mixing `human` and `ai` | Converted to `HumanMessage` and `AIMessage`, order preserved | none |
+| Empty history | The prompt template only has the system message and the user message | none |
+| Two consecutive calls | Each turn has its own model object, no reuse | none |
+| Model returns empty content or all whitespace | Reports an empty-reply error | `UpstreamError(502, "empty_reply")` |
+| Model raises an existing `UpstreamError` | Re-raised unchanged, not wrapped twice | `UpstreamError` |
+| Model raises a different error | Apply `map_openai_error` then wrap | `UpstreamError` |
+
+Table D6. Invariant rules about keys in P5.
+
+| Rule | Decision | Reason |
+|---|---|---|
+| When to read the key | Every `reply` turn, read from the store once | no server restart needed after `/api/setup` |
+| When to write the key | Only inside `save`, and only after `os.replace` returns | never let the process pretend it already has the key |
+| When it may be logged | Only via `mask_secret`, at most eight characters | no key leakage into the log file |
+| When to validate formally | In P4's `validate_api_key`, not here | exactly one place is responsible |
+| When to show the key back to the browser | Never, not even on error | the P6 route returns only the code and the constant message |
+| Keys in `memory.json` | Never | the memory file only holds roles and message content |
+
+## ERR. Error matrix for P5
+
+**ERR.1. Message loss when twenty threads write concurrently.** Symptom: `test_hai_muoi_luong_ghi_dong_thoi_khong_mat_tin` is red, the number of messages received is less than twenty. Cause: `append` reads the file then writes without holding a lock that wraps both operations. Fix: wrap both read and write in a `threading.Lock`, each instance holding its own lock object. File involved: `infrastructure/json_memory_repository.py`.
+
+**ERR.2. Leftover temp file when an error occurs midway.** Symptom: after `os.replace` fails, the directory gains an extra file ending in `.tmp`. Cause: no cleanup branch inside `except`. Fix: delete the temp file with `missing_ok=True` then re-raise the original error with a bare `raise`, not `raise ... from None`, to preserve the traceback. File involved: `infrastructure/atomic_write_text.py`.
+
+**ERR.3. A broken `memory.json` crashes the server.** Symptom: `get` raises `JSONDecodeError` up to the route. Cause: the reading function does not catch errors. Fix: catch `JSONDecodeError` and `UnicodeDecodeError`, rename the broken file with a timestamp, then start empty. File involved: `infrastructure/json_memory_repository.py`.
+
+**ERR.4. Vietnamese and emoji corrupted in the file.** Symptom: the file contains `\uXXXX` strings instead of real characters, or it cannot be opened on re-read. Cause: `json.dumps` missing `ensure_ascii=False`, or the file opened without declaring `encoding="utf-8"`. Fix: pin both points in `atomic_write_json.py` and `atomic_write_text.py`, verified by a Unicode test. Files involved: `infrastructure/atomic_write_json.py`, `infrastructure/atomic_write_text.py`.
+
+**ERR.5. `.env` using CRLF corrupts the key.** Symptom: `get` returns a value with a `\r` character; `is_configured` is still correct but the key sent to the service is wrong and gets rejected. Cause: the `\r` is not dropped after splitting lines. Fix: always use `splitlines()` then `strip()` each line. File involved: `infrastructure/env_api_key_store.py`.
+
+**ERR.6. Multiple `OPENAI_API_KEY` lines in `.env`.** Symptom: each chat turn uses the old key, the user thinks it was saved but it has no effect. Cause: taking the first key line. Fix: the read rule is last line wins, the write rule is exactly one key line remains. File involved: `infrastructure/env_api_key_store.py`.
+
+**ERR.7. `.env` does not exist when the key needs saving.** Symptom: `save` raises `FileNotFoundError` on the very first turn of the B1 first-run path. Cause: assuming the file already exists. Fix: treat the content as empty then write anew; `atomic_write_text` already creates the parent directory. Files involved: `infrastructure/env_api_key_store.py`, `infrastructure/atomic_write_text.py`.
+
+**ERR.8. Writing `.env` denied by permissions.** Symptom: `PermissionError` midway; handled wrongly it leaves a half-done file and the old key is lost. Cause: writing directly into the target file. Fix: write only through `atomic_write_text`, re-raise the original error, let the P6 route turn it into 500 `save_failed`. Files involved: `infrastructure/env_api_key_store.py`, `infrastructure/atomic_write_text.py`.
+
+**ERR.9. `os.environ` updated before the write finishes.** Symptom: the write fails but the process still pretends it has the key, the next chat turn falls into an error loop. Cause: assigning `os.environ` at the top of the function. Fix: place the `os.environ` assignment as the last step, after `os.replace` returns. File involved: `infrastructure/env_api_key_store.py`.
+
+**ERR.10. The key is read once and reused forever.** Symptom: after saving a new key via `POST /api/setup`, the user must stop and start the server again before chatting, violating B1 step 6. Cause: building `ChatOpenAI` once inside `__init__`. Fix: build `ChatOpenAI` and call `store.get()` inside `reply` on every turn. File involved: `infrastructure/langchain_chat_model.py`.
+
+**ERR.11. A missing `system-prompt.txt` crashes the server at startup.** Symptom: `run.py` stops with `FileNotFoundError`, the browser cannot open the page. Cause: reading the file without catching errors. Fix: swallow `OSError` and `UnicodeDecodeError`, return the default string. File involved: `infrastructure/load_system_prompt.py`.
+
+**ERR.12. `system-prompt.txt` is empty or whitespace only.** Symptom: the model rambles because there is no system role. Cause: returning empty content. Fix: `strip()` then check for emptiness, and if empty return the default Vietnamese string with diacritics. File involved: `infrastructure/load_system_prompt.py`.
+
+**ERR.13. The key leaks into an error message.** Symptom: a log or response contains the beginning of the key. Cause: concatenating `str(exc)` of an authentication error into the message. Fix: `map_openai_error` returns only Vietnamese constants, every log path uses `mask_secret`. Files involved: `infrastructure/map_openai_error.py`, `infrastructure/mask_secret.py`.
+
+**ERR.14. The fake `ChatOpenAI` is not used.** Symptom: a test calls the real service or reports a missing key. Cause: `monkeypatch` is attached to the `langchain_openai` package while the code imports directly from P5's own module. Fix: import the module `chatbot.infrastructure.langchain_chat_model` then `monkeypatch.setattr(lc, "ChatOpenAI", _tao_ban_gia)`. Files involved: `tests/test_langchain_chat_model.py`, `infrastructure/langchain_chat_model.py`.
+
+**ERR.15. A mid-run network loss is classified as 500.** Symptom: the user sees a generic notice instead of a retry hint. Cause: the connection error class is not recognized. Fix: check whether a class name in the MRO contains `Connection` and then return 502. File involved: `infrastructure/map_openai_error.py`.
+
+**ERR.16. Reversed check order turns timeouts into connection loss.** Symptom: `APITimeoutError` is classified as 502 because `APITimeoutError` inherits `APIConnectionError`, or 429 is classified as 401. Cause: the `Connection` branch is evaluated before the `Timeout` branch. Fix: keep the exact order authentication, overload, timeout, connection, and only then the remaining branch. File involved: `infrastructure/map_openai_error.py`.
+
+**ERR.17. Double wrapping loses the correct code.** Symptom: every error bubbling up becomes 500. Cause: `except UpstreamError` is missing, so an already-classified error is re-classified by `map_openai_error`. Fix: catch `UpstreamError` first and re-raise it unchanged. File involved: `infrastructure/langchain_chat_model.py`.
+
+**ERR.18. Wrong message order sent to the model.** Symptom: `test_reply_dung_thu_tu_tin_va_kieu_tin` is red because the user message sits before the system message, or an old reply message is sent as a user message. Cause: building the prompt template in the wrong order `system`, `history`, `human`, or converting `Message` to `HumanMessage` for both roles. Fix: keep the `ChatPromptTemplate` frame at R3 and branch on `role` at R5, verified by both a content comparison and a message-type comparison. File involved: `infrastructure/langchain_chat_model.py`.
+
+**ERR.19. An empty model reply is written into memory.** Symptom: the history contains an empty reply message, and the next turn sends a meaningless message to the model. Cause: `reply` returns an empty string instead of raising. Fix: check for emptiness at R10 and raise `UpstreamError(502, "empty_reply")` before the P4 use case can write it into memory. File involved: `infrastructure/langchain_chat_model.py`.
+
+**ERR.20. Tests flicker red because the multithreaded measurement does not block.** Symptom: `py -m pytest -q` gives different results across two consecutive runs. Cause: threads have not been `join`ed before asserting, or the lock was created at class level so different instances still collide. Fix: `join` all twenty threads before reading, and keep the lock at instance level. Files involved: `tests/test_json_memory_repository.py`, `infrastructure/json_memory_repository.py`.
+
+**ERR.21. A broken file is renamed over an older broken file.** Symptom: the timestamp only has second precision, so two breaks in the same second overwrite each other. Cause: `time.time()` rounded into an integer string. Fix: use a timestamp with a millisecond-fraction component or add a counting suffix, and rename only when the broken target file still exists. File involved: `infrastructure/json_memory_repository.py`.
+
+**ERR.22. Writing a file on Windows generates CRLF and then locks itself out.** Symptom: right after saving, `.env` is read by `load_settings` with extra characters and raises `SettingsError`. Cause: the file was opened without declaring `newline="\n"`. Fix: pin `newline="\n"` inside `atomic_write_text`, verified with `splitlines()` in `EnvApiKeyStore`. Files involved: `infrastructure/atomic_write_text.py`, `infrastructure/env_api_key_store.py`.
+
+## KILL. Immediate stop conditions and reporting for P5
+
+Apply the principle: stop NOW, do NOT patch by skipping tests, do NOT create files outside B2, then record the exact file name, test name, and the command that was run.
+
+**KILL.1. A real key anywhere in P5.** Stop condition: a concrete key value is found in the code, in a test file, in the sample `memory.json`, in the sample `.env`, or in a `mask_secret` message. Report: file name, line number, and confirmation that it has been replaced with `KHOA_MAU` or `KHOA_HAI`. Do NOT delete the line to make the warning disappear.
+
+**KILL.2. A file under `domain/` is modified or gains an import.** Stop condition: `message.py`, `trim_history.py`, `errors.py` or a port under `domain/ports` needs changing to make P5 run. Report: the `domain/` file name and the reason, then hand the fix over to P3. Check with `py -m pytest tests\test_domain_purity.py -q` after every cycle.
+
+**KILL.3. A file exceeds 100 lines and cannot be split.** Stop condition: the B11 100-line check prints a file name, and shortening no longer preserves the meaning. Report: file name, current line count, and two proposed split options. Do NOT add auxiliary files outside the B2 tree.
+
+**KILL.4. A seventh file is needed under `tests/`.** Stop condition: an intention to create an extra test file for `mask_secret`, for a separately split `atomic_write_json`, or for the `ChatOpenAI` fake. Report: the name of the proposed new file, and the suggestion to merge it into an existing test file in B12.
+
+**KILL.5. A dependency package is missing.** Stop condition: `py -m pytest tests\test_langchain_chat_model.py -q` reports `ModuleNotFoundError` for `langchain_openai`, `langchain_core`, `openai` or `httpx`. Report: the missing package name and the command `py -m pip install -r requirements.txt`. Do NOT bump or downgrade versions by hand, and do not use `sudo`.
+
+**KILL.6. Tests are green by cheating the checks.** Stop condition: finding `pytest.mark.skip`, `pytest.mark.xfail`, a `try` swallowing errors around a call that must be checked, or a commented-out `assert`. Report: the test name and the disabled line, then restore it and report the real failure.
+
+**KILL.7. A test accidentally calls outside the machine.** Stop condition: the fake `ChatOpenAI` is not attached, or a real `ChatOpenAI` is seen being built inside a test file. Report: the test name, and how to re-attach the fake to the correct P5 module.
+
+**KILL.8. A real key is needed for tests to go green.** Stop condition: an intention to ask the learner to paste a real key into the environment and then run P5's tests. Report: switching to the fake server per B13 with the key `TEST_KEY_` plus twenty x's, and stating explicitly that the end-to-end check belongs to P8.
+
+**KILL.9. Tests of P0 through P4 are red after P5 is green.** Stop condition: `py -m pytest -q` reports red in `test_load_settings.py`, `test_trim_history.py`, `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py` or `test_configure_api_key.py`. Report: the red test name, do not spread the fix, do not add fake mocks into another layer's test file.
+
+**KILL.10. `Settings` or `Message` must change for P5 to run.** Stop condition: a field needs adding, a field renaming, or a constraint loosening in `Settings` and `Message`. Report: the field name and the reason, then hand over to P2 or P3. P5's seven code files may only READ those two classes.
+
+**KILL.11. Risk of overwriting a real project file.** Stop condition: a P5 write path does not take a `Path` from a parameter but hard-codes `memory.json` or `.env` in the working directory. Report: the file that would be overwritten, and the fix is mandatory: take a `Path` via parameter.
+
+**KILL.12. Hard-coding the model service address or deleting `OPENAI_BASE_URL`.** Stop condition: product code contains a fixed API address string, or somewhere assigns a deletion to this environment variable. Report: file name and line, then delete it immediately to restore B13's end-to-end checking capability.
+
+
+# 4. Format:
+
+## 4.1. Convention keywords, explained exactly once in P5
+
+| word | meaning |
+|---|---|
+| opencode | a coding assistant that runs in the command window, reads the prompt, then generates files |
+| API | application programming interface; here it is the external response-model service |
+| endpoint | an HTTP path with a defined method and body, for example `POST /api/setup` |
+| venv | an isolated Python virtual environment for installed packages, created with `py -m venv .venv` |
+| pytest | Python's automated testing library, run with `py -m pytest -q` |
+| DDD | layered architecture; dependency arrows go only from outside to inside; the inner layer does not know the outer layer |
+| TDD | the process of writing tests first, seeing red, then writing minimal code to turn green |
+| formal spec | formal specification, that is, text using PRE, POST, INV, ERR, KILL, numbered steps and decision tables |
+| MUI | a React UI library, not within the scope of P5, belongs to P7 |
+
+## 4.2. Files to create in P5 (14 files, each file under 100 lines)
+
+PRE: P1 has created `chatbot/`, `pytest.ini` with `pythonpath = .` and `testpaths = tests`, and an empty `src/chatbot/__init__.py`. P2 has created `config/` with `Settings` as a frozen dataclass with nine fields. P3 has created `domain/message.py` with `Message(role, content)`, `domain/errors.py` with `UpstreamError(status, message)`, and the three ports `domain/ports/memory_repository.py`, `domain/ports/chat_model.py`, `domain/ports/api_key_store.py` as `abc.ABC` abstract classes. P4 has created `application/*`. The command `py -m pytest -q` must be green before starting P5.
+
+| file | direct dependency | number of protecting tests |
+|---|---|---|
+| `src/chatbot/infrastructure/atomic_write_text.py` | none | `tests/test_atomic_write.py` |
+| `src/chatbot/infrastructure/atomic_write_json.py` | `atomic_write_text` | `tests/test_atomic_write.py` |
+| `src/chatbot/infrastructure/json_memory_repository.py` | `..domain.message`, `..domain.ports.memory_repository`, `atomic_write_json` | `tests/test_json_memory_repository.py` |
+| `src/chatbot/infrastructure/load_system_prompt.py` | none | `tests/test_load_system_prompt.py` |
+| `src/chatbot/infrastructure/env_api_key_store.py` | `..domain.ports.api_key_store`, `atomic_write_text` | `tests/test_env_api_key_store.py` |
+| `src/chatbot/infrastructure/mask_secret.py` | none | `tests/test_env_api_key_store.py` |
+| `src/chatbot/infrastructure/map_openai_error.py` | `openai` | `tests/test_map_openai_error.py` |
+| `src/chatbot/infrastructure/langchain_chat_model.py` | `..domain.errors`, `..domain.message`, `..domain.ports.chat_model`, `map_openai_error` | `tests/test_langchain_chat_model.py` |
+
+The total number of mandatory P5 tests is 39: `test_atomic_write.py` 6 tests, `test_json_memory_repository.py` 8 tests, `test_env_api_key_store.py` 10 tests, `test_map_openai_error.py` 6 tests, `test_langchain_chat_model.py` 5 tests, `test_load_system_prompt.py` 4 tests. Do not add any test file beyond this list, and do not drop any test.
+
+POST: the 14 files in the table above exist, each file no more than 99 lines, performing its role correctly; `py -m pytest -q` prints `39 passed`.
+
+INV-1: files in `infrastructure/` only `import` from `..domain.*` and from `infrastructure/` itself; absolutely never `import` `..application.*`, `..interface.*`, `..config.*`.
+INV-2: every file write goes through `atomic_write_text` or `atomic_write_json`; no file opens in write mode directly.
+INV-3: API keys live only in the `.env` file and in process memory; never into logs, never into `memory.json`, never into responses, never into error messages.
+INV-4: `map_openai_error` is a pure function: the same input yields the same `(status, message)` pair, touches no files, reads no environment variables.
+INV-5: the API key is read on every `reply` turn, so after `POST /api/setup` there is no need to restart the server.
+INV-6: every read and write operation of `JsonMemoryRepository` sits behind exactly one `threading.Lock` belonging to that repository.
+INV-7: text files are written with `newline=""` so that only LF line endings exist on Windows.
+
+Decision table for `_doc` of `JsonMemoryRepository`:
+
+| condition | action | returns |
+|---|---|---|
+| file does not exist | do not write junk files | `{}` |
+| file is invalid JSON, or a UTF-8 decoding error, or a read error | rename to `memory.json.corrupt-<timestamp>` then treat as new | `{}` |
+| file is valid JSON but not an object | rename as above | `{}` |
+| file is valid JSON and is an object | keep it as is | the parsed object |
+
+ERR: every system error is re-raised intact, never swallowed; only `map_openai_error` translates OpenAI errors into `UpstreamError`; if `reply` returns an empty string, raise `UpstreamError(502, ...)`.
+
+KILL: stop immediately if any file exceeds 99 lines; stop if `py -m pytest -q` reports a collection error; stop if the secret-scan command prints any line; stop if `python3`, `curl`, `sudo`, `source` or `grep` has to be used; stop if a function is placed in the same file as another function from a different tier.
+
+## 4.3. Final report format of opencode (must be printed in exactly the right order)
+
+The report consists of exactly three blocks, no other blocks added, no repetition of source code.
+
+Block 1, the file table:
+
+| file | line count | one-sentence role |
+|---|---|---|
+| (fill in all 14 files per table 4.2) | (the real count) | (one line of Vietnamese with diacritics) |
+
+Block 2, the test results, consisting of two mandatory items:
+- Red round: paste verbatim the `FAILED`, `ERROR` or `failed` lines from the run before writing the implementation code.
+- Green round: paste verbatim the summary line, for example `39 passed in 3.11s`.
+
+Block 3, the two compliance commands, each with its printed result:
+- The line-count command for lines not under 100: prints nothing.
+- The secret-scan command `Select-String -Path src,tests -Pattern '[s]k-' -Recurse`: prints nothing.
+
+Table columns use Vietnamese with diacritics; paths, function names, class names and status codes stay in English.
+
+# 5. Example:
+
+The example below is the complete code of all 14 files within the scope of P5. Following TDD, the student creates the test file first, runs `py -m pytest -q` to see red, then creates the implementation file and runs it again to see green.
+
+## 5.1. Implementation files
+
+PRE for every file in 5.1: `os.replace` must be called through the attribute of module `os` so that tests can replace it with `monkeypatch`; `Message` is a frozen dataclass with `role` and `content`; the three ports are `abc.ABC` abstract classes with exactly the methods in B4.
+
+```python
+import os
+import tempfile
+from pathlib import Path
+
+
+def atomic_write_text(path, text):
+    """Ghi văn bản theo kiểu nguyên tử: ghi tệp tạm cùng thư mục rồi os.replace."""
+    dich = Path(path)
+    dich.parent.mkdir(parents=True, exist_ok=True)
+    mo_ta, ten_tam = tempfile.mkstemp(prefix=dich.name + ".tmp-", dir=str(dich.parent))
+    duong_dan_tam = Path(ten_tam)
+    try:
+        with os.fdopen(mo_ta, "w", encoding="utf-8", newline="") as tep:
+            tep.write(text)
+            tep.flush()
+            os.fsync(tep.fileno())
+        os.replace(duong_dan_tam, dich)
+    except BaseException:
+        duong_dan_tam.unlink(missing_ok=True)
+        raise
+    return str(dich)
+```
+
+```python
+import json
+
+from .atomic_write_text import atomic_write_text
+
+
+def atomic_write_json(path, data):
+    """Ghi JSON UTF-8 thụt lề 2 rồi chuyển sang atomic_write_text."""
+    noi_dung = json.dumps(data, ensure_ascii=False, indent=2)
+    return atomic_write_text(path, noi_dung + "\n")
+```
+
+```python
+import json
+import threading
+import time
+from pathlib import Path
+
+from ..domain.message import Message
+from ..domain.ports.memory_repository import MemoryRepository
+from .atomic_write_json import atomic_write_json
+
+
+class JsonMemoryRepository(MemoryRepository):
+    """Kho lịch sử hội thoại trong tệp JSON, mọi thao tác nằm sau khóa luồng."""
+
+    def __init__(self, path):
+        self._path = Path(path)
+        self._lock = threading.Lock()
+
+    def get(self, session_id):
+        with self._lock:
+            du_lieu = self._doc()
+        tin = []
+        for muc in du_lieu.get(session_id, []):
+            try:
+                tin.append(Message(muc["role"], muc["content"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return tin
+
+    def append(self, session_id, messages):
+        moi = [{"role": m.role, "content": m.content} for m in messages]
+        with self._lock:
+            du_lieu = self._doc()
+            du_lieu.setdefault(session_id, []).extend(moi)
+            atomic_write_json(self._path, du_lieu)
+
+    def reset(self, session_id):
+        with self._lock:
+            du_lieu = self._doc()
+            if session_id not in du_lieu:
+                return
+            del du_lieu[session_id]
+            atomic_write_json(self._path, du_lieu)
+
+    def _doc(self):
+        if not self._path.exists():
+            return {}
+        try:
+            du_lieu = json.loads(self._path.read_text(encoding="utf-8-sig"))
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            du_lieu = None
+        if isinstance(du_lieu, dict):
+            return du_lieu
+        self._cach_ly()
+        return {}
+
+    def _cach_ly(self):
+        ten = self._path.name + ".corrupt-" + str(int(time.time()))
+        try:
+            self._path.replace(self._path.with_name(ten))
+        except OSError:
+            pass
+```
+
+```python
+from pathlib import Path
+
+DEFAULT_SYSTEM_PROMPT = (
+    "Bạn là trợ lý học tập của lớp học Python.\n"
+    "Trả lời ngắn gọn, rõ ràng, đúng tiếng Việt có dấu."
+)
+
+
+def load_system_prompt(path):
+    """Đọc lệnh hệ thống; thiếu tệp hoặc rỗng thì trả lệnh mặc định, không sập."""
+    try:
+        noi_dung = Path(path).read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError):
+        return DEFAULT_SYSTEM_PROMPT
+    noi_dung = noi_dung.strip()
+    return noi_dung if noi_dung else DEFAULT_SYSTEM_PROMPT
+```
+
+```python
+import os
+from pathlib import Path
+
+from ..domain.ports.api_key_store import ApiKeyStore
+from .atomic_write_text import atomic_write_text
+
+TEN_KHOA = "OPENAI_API_KEY"
+
+
+class EnvApiKeyStore(ApiKeyStore):
+    """Đọc và ghi khóa API trong tệp .env bằng ghi nguyên tử."""
+
+    def __init__(self, env_path):
+        self._path = Path(env_path)
+
+    def is_configured(self):
+        return bool(self.get())
+
+    def get(self):
+        if not self._path.exists():
+            return os.environ.get(TEN_KHOA, "")
+        for dong in self._doc().splitlines():
+            if self._la_dong_khoa(dong):
+                return dong.strip().split("=", 1)[1].strip()
+        return ""
+
+    def save(self, api_key):
+        dong_cu = self._doc().splitlines() if self._path.exists() else []
+        vi_tri = next((i for i, d in enumerate(dong_cu) if self._la_dong_khoa(d)), None)
+        giu_lai = [d for d in dong_cu if not self._la_dong_khoa(d)]
+        giu_lai.insert(len(giu_lai) if vi_tri is None else vi_tri, TEN_KHOA + "=" + api_key)
+        atomic_write_text(self._path, "\n".join(giu_lai) + "\n")
+        os.environ[TEN_KHOA] = api_key
+
+    def _doc(self):
+        try:
+            return self._path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError):
+            return ""
+
+    def _la_dong_khoa(self, dong):
+        return dong.strip().startswith(TEN_KHOA + "=")
+```
+
+```python
+def mask_secret(value):
+    """Che bí mật cho log: luôn có dấu sao, chỉ lộ tối đa 4 ký tự cuối."""
+    if not isinstance(value, str) or len(value) < 12:
+        return "****"
+    return "****" + value[-4:]
+```
+
+```python
+import openai
+
+THONG_DIEP = {
+    401: "Khóa API không đúng, nhập lại.",
+    503: "Hệ thống đang quá tải, thử lại sau.",
+    504: "Mô hình trả lời quá lâu.",
+    502: "Không kết nối được dịch vụ mô hình.",
+    500: "Có lỗi không mong đợi.",
+}
+
+
+def map_openai_error(exc):
+    """Dịch lỗi OpenAI thành cặp (mã trạng thái, thông điệp tiếng Việt)."""
+    if isinstance(exc, openai.AuthenticationError):
+        ma = 401
+    elif isinstance(exc, openai.RateLimitError):
+        ma = 503
+    elif isinstance(exc, openai.APITimeoutError):
+        ma = 504
+    elif isinstance(exc, openai.APIConnectionError):
+        ma = 502
+    else:
+        ma = 500
+    return ma, THONG_DIEP[ma]
+```
+
+```python
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_openai import ChatOpenAI
+
+from ..domain.errors import UpstreamError
+from ..domain.ports.chat_model import ChatModel
+from .map_openai_error import map_openai_error
+
+LOI_RONG = "Mô hình trả về câu trả lời rỗng."
+
+
+class LangChainChatModel(ChatModel):
+    """Cầu nối tới mô hình trả lời, đọc khóa API ở mỗi lượt gọi."""
+
+    def __init__(self, settings, store):
+        self._settings = settings
+        self._store = store
+
+    def reply(self, system_prompt, history, user_text):
+        mau = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            MessagesPlaceholder("history"),
+            ("human", "{input}"),
+        ])
+        mo_hinh = ChatOpenAI(
+            model=self._settings.openai_model,
+            temperature=self._settings.openai_temperature,
+            timeout=self._settings.openai_timeout,
+            api_key=self._store.get(),
+        )
+        try:
+            ket_qua = mo_hinh.invoke(mau.invoke({
+                "history": self._doi_doi(history),
+                "input": user_text,
+            }))
+        except Exception as loi:
+            ma, thong_diep = map_openai_error(loi)
+            raise UpstreamError(ma, thong_diep) from loi
+        noi_dung = (ket_qua.content or "").strip()
+        if not noi_dung:
+            raise UpstreamError(502, LOI_RONG)
+        return noi_dung
+
+    def _doi_doi(self, history):
+        doi = []
+        for tin in history:
+            if tin.role == "human":
+                doi.append(HumanMessage(content=tin.content))
+            else:
+                doi.append(AIMessage(content=tin.content))
+        return doi
+```
+
+## 5.2. Test files, written first, run red, then green
+
+```python
+import json
+import os
+
+import pytest
+
+from src.chatbot.infrastructure.atomic_write_json import atomic_write_json
+from src.chatbot.infrastructure.atomic_write_text import atomic_write_text
+
+
+def test_tao_thu_muc_cha_khi_thieu(tmp_path):
+    dich = tmp_path / "muc" / "tep.txt"
+    atomic_write_text(dich, "xin chào")
+    assert dich.read_text(encoding="utf-8") == "xin chào"
+
+
+def test_ghi_de_khong_mat_du_lieu_cu(tmp_path):
+    dich = tmp_path / "tep.txt"
+    dich.write_text("cũ", encoding="utf-8")
+    atomic_write_text(dich, "mới")
+    assert dich.read_text(encoding="utf-8") == "mới"
+
+
+def test_khong_con_tep_tam_sau_khi_thanh_cong(tmp_path):
+    atomic_write_text(tmp_path / "tep.txt", "dữ liệu")
+    assert [p.name for p in tmp_path.iterdir()] == ["tep.txt"]
+
+
+def test_lo_giua_chung_don_tep_tam(tmp_path, monkeypatch):
+    dich = tmp_path / "tep.txt"
+    dich.write_text("cũ", encoding="utf-8")
+
+    def _that_bai(ten_tam, ten_dich):
+        raise OSError("đĩa đầy")
+
+    monkeypatch.setattr(os, "replace", _that_bai)
+    with pytest.raises(OSError):
+        atomic_write_text(dich, "mới")
+    assert dich.read_text(encoding="utf-8") == "cũ"
+    assert [p.name for p in tmp_path.iterdir()] == ["tep.txt"]
+
+
+def test_json_giu_tieng_viet_co_dau(tmp_path):
+    dich = tmp_path / "du_lieu.json"
+    atomic_write_json(dich, {"loi_chao": "tiếng Việt có dấu"})
+    assert json.loads(dich.read_text(encoding="utf-8"))["loi_chao"] == "tiếng Việt có dấu"
+
+
+def test_json_thay_the_toan_bo_noi_dung_cu(tmp_path):
+    dich = tmp_path / "du_lieu.json"
+    dich.write_text('{"a": 1}', encoding="utf-8")
+    atomic_write_json(dich, {"b": 2})
+    assert json.loads(dich.read_text(encoding="utf-8")) == {"b": 2}
+```
+
+```python
+import json
+import threading
+
+from src.chatbot.domain.message import Message
+from src.chatbot.infrastructure.json_memory_repository import JsonMemoryRepository
+
+
+def _kho(tmp_path):
+    return JsonMemoryRepository(tmp_path / "memory.json")
+
+
+def _ten_tap(tmp_path):
+    return [p.name for p in tmp_path.iterdir()]
+
+
+def test_tep_thieu_thi_tra_ve_rong(tmp_path):
+    assert _kho(tmp_path).get("abc-123") == []
+
+
+def test_luu_roi_doc_lai_giu_dung_thu_tu(tmp_path):
+    kho = _kho(tmp_path)
+    kho.append("abc-123", [Message("human", "chào"), Message("ai", "chào bạn")])
+    kho.append("abc-123", [Message("human", "học gì")])
+    assert [m.content for m in kho.get("abc-123")] == ["chào", "chào bạn", "học gì"]
+
+
+def test_tieng_viet_co_dau_duoc_giu_nguyen_trong_tap(tmp_path):
+    kho = _kho(tmp_path)
+    kho.append("abc-123", [Message("human", "tiếng Việt có dấu và biểu tượng")])
+    noi_dung = (tmp_path / "memory.json").read_text(encoding="utf-8")
+    assert "tiếng Việt có dấu và biểu tượng" in noi_dung
+
+
+def test_reset_phien_da_co(tmp_path):
+    kho = _kho(tmp_path)
+    kho.append("abc-123", [Message("human", "một")])
+    kho.reset("abc-123")
+    assert kho.get("abc-123") == []
+
+
+def test_reset_phien_chua_co_thanh_cong_am_thanh(tmp_path):
+    _kho(tmp_path).reset("abc-123")
+    assert _ten_tap(tmp_path) == []
+
+
+def test_tep_hong_bi_doi_ten_roi_bat_dau_rong(tmp_path):
+    (tmp_path / "memory.json").write_text("{không phải JSON", encoding="utf-8")
+    assert _kho(tmp_path).get("abc-123") == []
+    assert [n for n in _ten_tap(tmp_path) if n.startswith("memory.json.corrupt-")]
+
+
+def test_bo_quan_phan_tu_hong_trong_danh_sach(tmp_path):
+    du_lieu = {"abc-123": [{"role": "sai", "content": "a"}, {"role": "human", "content": "b"}]}
+    (tmp_path / "memory.json").write_text(json.dumps(du_lieu, ensure_ascii=False), encoding="utf-8")
+    assert [m.content for m in _kho(tmp_path).get("abc-123")] == ["b"]
+
+
+def test_hon_20_luong_ghi_dong_thoi_khong_mat_tin(tmp_path):
+    kho = _kho(tmp_path)
+
+    def _viet(so):
+        kho.append("abc-123", [Message("human", f"tin-{so}")])
+
+    luong = [threading.Thread(target=_viet, args=(i,)) for i in range(20)]
+    for t in luong:
+        t.start()
+    for t in luong:
+        t.join()
+    assert len(kho.get("abc-123")) == 20
+```
+
+```python
+import os
+
+import pytest
+
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.infrastructure.mask_secret import mask_secret
+
+KHOA_MOI = "TEST_KEY_" + "x" * 20
+DONG_MOI = "OPENAI_API_KEY=" + KHOA_MOI
+
+
+def _store(tmp_path, text=None):
+    duong_dan = tmp_path / ".env"
+    if text is not None:
+        duong_dan.write_text(text, encoding="utf-8")
+    return EnvApiKeyStore(duong_dan)
+
+
+def _dong(tmp_path):
+    return (tmp_path / ".env").read_text(encoding="utf-8").splitlines()
+
+
+def test_them_dong_moi_khi_tap_rong(tmp_path):
+    _store(tmp_path).save(KHOA_MOI)
+    assert _dong(tmp_path) == [DONG_MOI]
+
+
+def test_thay_dong_cu_va_giu_nguyen_dong_khac(tmp_path):
+    _store(tmp_path, "OPENAI_MODEL=gpt-4o-mini\nOPENAI_API_KEY=cu\nPORT=2610\n").save(KHOA_MOI)
+    assert _dong(tmp_path) == ["OPENAI_MODEL=gpt-4o-mini", DONG_MOI, "PORT=2610"]
+
+
+def test_dong_trung_bi_gop_lam_mot(tmp_path):
+    _store(tmp_path, "OPENAI_API_KEY=mot\nPORT=2610\nOPENAI_API_KEY=hai\n").save(KHOA_MOI)
+    assert _dong(tmp_path) == [DONG_MOI, "PORT=2610"]
+
+
+def test_crlf_duoc_chuan_hoa_ve_lf_khi_ghi(tmp_path):
+    _store(tmp_path, "PORT=2610\r\nOPENAI_API_KEY=cu\r\n").save(KHOA_MOI)
+    noi_dung = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "\r" not in noi_dung
+    assert noi_dung.splitlines() == ["PORT=2610", DONG_MOI]
+
+
+def test_save_cap_nhat_bien_moi_truong_tien_trinh(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _store(tmp_path).save(KHOA_MOI)
+    assert os.environ["OPENAI_API_KEY"] == KHOA_MOI
+
+
+def test_get_doc_khoa_tu_tap_khi_co_tap(tmp_path):
+    assert _store(tmp_path, DONG_MOI + "\n").get() == KHOA_MOI
+
+
+def test_get_thieu_tap_thi_doc_tu_bien_moi_truong_tien_trinh(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", KHOA_MOI)
+    assert _store(tmp_path).get() == KHOA_MOI
+
+
+def test_is_configured_theo_gia_tri_khoa(tmp_path):
+    assert _store(tmp_path, DONG_MOI + "\n").is_configured() is True
+    assert _store(tmp_path, "OPENAI_API_KEY=\n").is_configured() is False
+
+
+def test_tap_bi_tu_choi_quyen_ghi_thi_save_that_bai(tmp_path, monkeypatch):
+    store = _store(tmp_path, "PORT=2610\n")
+
+    def _that_bai(ten_tam, ten_dich):
+        raise PermissionError("bị từ chối quyền ghi")
+
+    monkeypatch.setattr(os, "replace", _that_bai)
+    with pytest.raises(PermissionError):
+        store.save(KHOA_MOI)
+    assert _dong(tmp_path) == ["PORT=2610"]
+
+
+def test_che_khoa_chi_lo_bon_ky_tu_cuoi():
+    assert mask_secret(KHOA_MOI) == "****xxxx"
+    assert mask_secret("ngan") == "****"
+    assert mask_secret(None) == "****"
+```
+
+```python
+import httpx
+import openai
+
+from src.chatbot.infrastructure.map_openai_error import map_openai_error
+
+DIA_CHI = "https://vidu.test/v1/chat/completions"
+
+
+def _loi_trang_thai(loi, ma):
+    yeu_cau = httpx.Request("POST", DIA_CHI)
+    return loi("lỗi thử nghiệm", response=httpx.Response(ma, request=yeu_cau), body=None)
+
+
+def _loi_ket_noi(loi):
+    yeu_cau = httpx.Request("POST", DIA_CHI)
+    if loi is openai.APITimeoutError:
+        return loi(yeu_cau)
+    return loi(message="không kết nối được dịch vụ", request=yeu_cau)
+
+
+def test_loi_xac_thuc_thanh_401():
+    exc = _loi_trang_thai(openai.AuthenticationError, 401)
+    assert map_openai_error(exc) == (401, "Khóa API không đúng, nhập lại.")
+
+
+def test_loi_qua_tai_http_429_thanh_503():
+    exc = _loi_trang_thai(openai.RateLimitError, 429)
+    assert map_openai_error(exc) == (503, "Hệ thống đang quá tải, thử lại sau.")
+
+
+def test_loi_het_gio_thanh_504():
+    assert map_openai_error(_loi_ket_noi(openai.APITimeoutError)) == (
+        504,
+        "Mô hình trả lời quá lâu.",
+    )
+
+
+def test_loi_ket_noi_thanh_502():
+    assert map_openai_error(_loi_ket_noi(openai.APIConnectionError)) == (
+        502,
+        "Không kết nối được dịch vụ mô hình.",
+    )
+
+
+def test_loi_khong_ro_thanh_500():
+    assert map_openai_error(RuntimeError("x")) == (500, "Có lỗi không mong đợi.")
+
+
+def test_thu_tu_kiem_tra_dat_timeout_truoc_ket_noi():
+    exc = _loi_ket_noi(openai.APITimeoutError)
+    assert isinstance(exc, openai.APIConnectionError)
+```
+
+```python
+from types import SimpleNamespace
+
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+from src.chatbot.domain.errors import UpstreamError
+from src.chatbot.domain.message import Message
+from src.chatbot.infrastructure import langchain_chat_model as mod
+from src.chatbot.infrastructure.langchain_chat_model import LangChainChatModel
+
+KHOA = "TEST_KEY_" + "x" * 20
+
+
+class KhoGia:
+    """Bản giả ApiKeyStore: chỉ đếm số lần lấy khóa."""
+
+    def __init__(self):
+        self.so_lan_goi = 0
+
+    def get(self):
+        self.so_lan_goi += 1
+        return KHOA
+
+
+class ChatOpenAIGia:
+    """Bản giả ChatOpenAI: ghi tham số khởi tạo rồi trả AIMessage."""
+
+    goi = []
+    noi_dung = "Câu trả lời"
+    loi = None
+
+    def __init__(self, **tham_so):
+        ChatOpenAIGia.goi.append(tham_so)
+
+    def invoke(self, gia_tri):
+        ChatOpenAIGia.goi[-1]["gia_tri"] = gia_tri
+        if ChatOpenAIGia.loi is not None:
+            raise ChatOpenAIGia.loi
+        return AIMessage(content=ChatOpenAIGia.noi_dung)
+
+
+@pytest.fixture(autouse=True)
+def _dat_lai(monkeypatch):
+    ChatOpenAIGia.goi = []
+    ChatOpenAIGia.noi_dung = "Câu trả lời"
+    ChatOpenAIGia.loi = None
+    monkeypatch.setattr(mod, "ChatOpenAI", ChatOpenAIGia)
+
+
+def _mo_hinh(kho):
+    cau_hinh = SimpleNamespace(
+        openai_model="gpt-4o-mini",
+        openai_temperature=0.3,
+        openai_timeout=30,
+    )
+    return LangChainChatModel(cau_hinh, kho)
+
+
+def test_thu_tu_tin_dung_khi_goi():
+    lich_su = [Message("human", "hỏi trước"), Message("ai", "trả lời trước")]
+    _mo_hinh(KhoGia()).reply("lệnh hệ thống", lich_su, "hỏi mới")
+    tin = ChatOpenAIGia.goi[0]["gia_tri"].to_messages()
+    assert [type(t) for t in tin] == [SystemMessage, HumanMessage, AIMessage, HumanMessage]
+    assert tin[0].content == "lệnh hệ thống"
+    assert tin[3].content == "hỏi mới"
+
+
+def test_tham_so_truyen_vao_dung_cau_hinh():
+    _mo_hinh(KhoGia()).reply("lệnh", [], "xin chào")
+    tham_so = ChatOpenAIGia.goi[0]
+    assert tham_so["model"] == "gpt-4o-mini"
+    assert tham_so["temperature"] == 0.3
+    assert tham_so["timeout"] == 30
+    assert tham_so["api_key"] == KHOA
+
+
+def test_khoa_duoc_doc_lai_moi_luot():
+    kho = KhoGia()
+    mo_hinh = _mo_hinh(kho)
+    mo_hinh.reply("lệnh", [], "một")
+    mo_hinh.reply("lệnh", [], "hai")
+    assert [c["api_key"] for c in ChatOpenAIGia.goi] == [KHOA, KHOA]
+    assert kho.so_lan_goi == 2
+
+
+def test_loi_bat_ky_thanh_upstream_error():
+    ChatOpenAIGia.loi = RuntimeError("hỏng kết nối")
+    with pytest.raises(UpstreamError) as loi:
+        _mo_hinh(KhoGia()).reply("lệnh", [], "xin chào")
+    assert loi.value.status == 500
+
+
+def test_tra_loi_rong_thanh_502():
+    ChatOpenAIGia.noi_dung = "   "
+    with pytest.raises(UpstreamError) as loi:
+        _mo_hinh(KhoGia()).reply("lệnh", [], "xin chào")
+    assert loi.value.status == 502
+```
+
+```python
+from src.chatbot.infrastructure.load_system_prompt import (
+    DEFAULT_SYSTEM_PROMPT,
+    load_system_prompt,
+)
+
+
+def test_doc_tep_co_noi_dung_tieng_viet(tmp_path):
+    tep = tmp_path / "system-prompt.txt"
+    tep.write_text("Bạn là trợ lý học tập.\nTrả lời ngắn gọn.\n", encoding="utf-8")
+    assert load_system_prompt(tep) == "Bạn là trợ lý học tập.\nTrả lời ngắn gọn."
+
+
+def test_thieu_tep_thi_tra_ve_mac_dinh(tmp_path):
+    assert load_system_prompt(tmp_path / "khong-co.txt") == DEFAULT_SYSTEM_PROMPT
+
+
+def test_tep_chi_co_khoang_trang_thi_tra_ve_mac_dinh(tmp_path):
+    tep = tmp_path / "system-prompt.txt"
+    tep.write_text("   \n\t\n", encoding="utf-8")
+    assert load_system_prompt(tep) == DEFAULT_SYSTEM_PROMPT
+
+
+def test_mac_dinh_la_tieng_viet_co_dau():
+    assert DEFAULT_SYSTEM_PROMPT.startswith("Bạn là")
+```
+
+## 5.3. Sample report and sample PowerShell log (red round, then green round)
+
+| file | line count | one-sentence role |
+|---|---|---|
+| `src/chatbot/infrastructure/atomic_write_text.py` | 21 | Writes text atomically through a temp file then `os.replace`. |
+| `src/chatbot/infrastructure/atomic_write_json.py` | 9 | Converts data to UTF-8 JSON and writes it atomically. |
+| `src/chatbot/infrastructure/json_memory_repository.py` | 61 | Stores conversation history per session in a JSON file, with a thread lock. |
+| `src/chatbot/infrastructure/load_system_prompt.py` | 17 | Reads the system prompt; returns the default if the file is missing. |
+| `src/chatbot/infrastructure/env_api_key_store.py` | 42 | Reads and writes the API key in the `.env` file. |
+| `src/chatbot/infrastructure/mask_secret.py` | 5 | Masks the key for logs, exposing only the last 4 characters. |
+| `src/chatbot/infrastructure/map_openai_error.py` | 24 | Maps 5 kinds of OpenAI errors to status codes and Vietnamese messages. |
+| `src/chatbot/infrastructure/langchain_chat_model.py` | 52 | Builds the prompt and calls the model, reading the key on every turn. |
+| `tests/test_atomic_write.py` | 52 | Protects atomic writing and temp file cleanup. |
+| `tests/test_json_memory_repository.py` | 69 | Protects missing files, corrupt files, Unicode and 20 concurrent threads. |
+| `tests/test_env_api_key_store.py` | 80 | Protects adding, replacing and merging key lines, and denied write permission. |
+| `tests/test_langchain_chat_model.py` | 97 | Protects message order, parameters, key re-reading and error codes. |
+| `tests/test_map_openai_error.py` | 51 | Protects the five error-mapping branches and the check order. |
+| `tests/test_load_system_prompt.py` | 24 | Protects files with content, missing files and empty files. |
+
+Red round, first run, when the six test files already exist but the eight implementation files do not yet exist:
+
+```powershell
+PS C:\chatbot> py -m pytest -q tests\test_atomic_write.py tests\test_json_memory_repository.py tests\test_env_api_key_store.py tests\test_langchain_chat_model.py tests\test_map_openai_error.py tests\test_load_system_prompt.py
+ImportError while importing test module 'C:\chatbot\tests\test_atomic_write.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\chatbot\tests\test_atomic_write.py:6: in <module>
+    from src.chatbot.infrastructure.atomic_write_json import atomic_write_json
+E   ModuleNotFoundError: No module named 'src.chatbot.infrastructure'
+=========================== short test summary info ===========================
+ERROR tests/test_atomic_write.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.61s ===============================
+```
+
+Red round, second run, when the implementation is still missing four fixes:
+
+```powershell
+PS C:\chatbot> py -m pytest -q
+.F......F....F.............F.............................................F [100%]
+=================================== FAILURES ===================================
+_______________________ test_lo_giua_chung_don_tep_tam ________________________
+E       assert [WindowsPath('C:/chatbot/tep.txt.tmp-ab12')] == [WindowsPath('C:/chatbot/tep.txt')]
+tests\test_atomic_write.py:39: AssertionError
+________________ test_dong_trung_bi_gop_lam_mot ____________________________
+E       assert ['OPENAI_API_KEY=mot', 'OPENAI_API_KEY=hai', 'PORT=2610'] == ['OPENAI_API_KEY=TEST_KEY_xxxxxxxxxxxxxxxxxxxx', 'PORT=2610']
+tests\test_env_api_key_store.py:35: AssertionError
+________________ test_khoa_duoc_doc_lai_moi_luot ____________________________
+E       assert 1 == 2
+tests\test_langchain_chat_model.py:83: AssertionError
+________________ test_mac_dinh_la_tieng_viet_co_dau _________________________
+E       assert 'Bạn là trợ lý' in DEFAULT_SYSTEM_PROMPT
+tests\test_load_system_prompt.py:24: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_atomic_write.py::test_lo_giua_chung_don_tep_tam
+FAILED tests/test_env_api_key_store.py::test_dong_trung_bi_gop_lam_mot
+FAILED tests/test_langchain_chat_model.py::test_khoa_duoc_doc_lai_moi_luot
+FAILED tests/test_load_system_prompt.py::test_mac_dinh_la_tieng_viet_co_dau
+========================= 4 failed, 35 passed in 2.94s ==========================
+```
+
+Green round, after fixing all four causes:
+
+```powershell
+PS C:\chatbot> py -m pytest -q
+...............................................................          [100%]
+=============================== 39 passed in 3.11s ==============================
+PS C:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+PS C:\chatbot> Select-String -Path src,tests -Pattern '[s]k-' -Recurse
+PS C:\chatbot>
+```
+
+# 6. Notices:
+
+1. Do not embed real keys in code or tests; test keys only use `TEST_KEY_` plus 20 x characters; the reason: a real key leaking into source code is an irreversible security incident.
+2. Do not write keys to logs, `memory.json`, HTTP responses or error messages; when logging is needed use `mask_secret`; the reason: keys must live only in `.env`.
+3. Do not print the key value on `SettingsError` or `PermissionError`; the reason: error messages are also a leak channel.
+4. Do not skip the temp file in the same directory; `os.replace` is atomic only when the temp file is on the same file system; the reason: a temp file in a different directory loses atomicity.
+5. Do not open files in direct write mode for `.env` or `memory.json`; the reason: a power cut halfway through would leave a half-written file.
+6. Do not use a module-level lock for the memory repository; must use the `threading.Lock` of exactly one repository; the reason: 20 threads writing concurrently will lose messages if the lock is shared.
+7. Do not use `chmod` as a mandatory step; the reason: Windows has no Unix-style permission concept.
+8. Do not skip `newline=""` when writing text; the reason: on Windows it would generate CRLF and break the test `test_crlf_duoc_chuan_hoa_ve_lf_khi_ghi`.
+9. Do not use default `json.dumps`; must have `ensure_ascii=False`; the reason: Vietnamese with diacritics would become hard-to-read `\u` strings.
+10. Do not delete a corrupt `memory.json`; must rename it with the suffix `.corrupt-<timestamp>`; the reason: deleting destroys the evidence for re-diagnosis.
+11. Do not crash the application when `memory.json` is corrupt or `system-prompt.txt` is missing; the reason: the first-time flow must be able to open the key input box.
+12. Do not build `ChatOpenAI` once in `__init__`; the reason: after `POST /api/setup` the user must be able to chat immediately without restarting the server.
+13. Do not use `except: pass` in `reply`; must raise `UpstreamError` with a code and a Vietnamese message; the reason: the route needs the correct status code to display the notification.
+14. Do not return an English message to the user in this tier; the reason: consistent Vietnamese with diacritics at every tier.
+15. Do not add dependencies on `..application`, `..interface` or `..config`; the reason: the dependency arrows of layered architecture.
+16. Do not put two public functions into one file within the same tier and do not duplicate a name with another file; the reason: the one-function-per-file rule at B2.
+17. Do not create `.js` files or `index.html` in P5; the reason: the interface belongs to P7.
+18. Do not overwrite the user's real `.env` file with sample content; the reason: it would erase the saved key.
+19. Do not hard-code the model service address into the code and do not delete the `OPENAI_BASE_URL` variable; the reason: the automatic checker points it at a fake server.
+20. Do not check the provider prefix in `env_api_key_store`; that belongs to `validate_api_key` of P4; the reason: avoid duplicated responsibility between the two tiers.
+21. Do not use real environment variables in tests; use `monkeypatch.setenv` and `monkeypatch.delenv`; the reason: avoid polluting the student's machine.
+22. Do not use wall-clock time as an assertion condition in tests; the reason: assertions based on wall-clock time are flaky under machine load.
+23. Do not use bash commands and do not run the server directly in the shell of opencode; use `Start-Process` then `Start-Sleep -Seconds 3`; the reason: the environment is Windows 11 with PowerShell.
+24. Do not let a file exceed 99 lines and do not skip the line-compliance check; the reason: the rule at B2 is an acceptance condition at P9.
+25. Do not write `innerHTML` or `dangerouslySetInnerHTML` at any tier; the reason: user messages must be displayed verbatim, without executing code.
+
+# 7. Input:
+
+The student provides the following to opencode, either by placing a file in the right place or by writing into opencode's answer box, without pasting the key anywhere:
+
+1. The root directory path of the project, for example `C:\chatbot`, and confirmation that this is Windows 11.
+2. The result of running `py -m pytest -q` after P4, with the summary line pasted verbatim, so that opencode knows the green baseline before P5.
+3. The list of files currently in `src/chatbot/domain` and `src/chatbot/config`, because P5 implements exactly the ports and reads exactly the nine field names.
+4. The environment variable name `OPENAI_BASE_URL` if the student wants to run end-to-end without a real key; if there is none, leave it blank.
+5. The choice of editing arrangement: opencode writes the files on the student's instructions, or the student writes them and opencode only checks.
+6. Confirmation that port `2610` is still free, because P5 does not run the server yet but P6 will use this port.
+7. The desired question for the system prompt, if the student wants to replace the default content in `load_system_prompt`.
+
+The API key is NOT pasted into the chat with opencode, NOT sent via messages, NOT written into any file in the project. The key is entered on the chatbot's page on the first run: the "Nhập khóa API" dialog appears, the student pastes the key into the password field, presses Save, the server writes it into `.env`, and every subsequent chat turn uses that key. In P5 only a test key of the form `TEST_KEY_` plus 20 x characters is needed so that the tests can run.
+
+# 8. OKRs (O + KRs):
+
+O: Complete the infrastructure tier of the web chatbot with 14 files, one role per file, 39 green automated tests, no API key leakage, and every file write atomic.
+
+KR1: exactly 14 files exist per table 4.2, each file no more than 99 lines; the command `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+KR2: `py -m pytest -q` prints exactly the line `39 passed`.
+KR3: the report contains at least one red round pasted verbatim, in which there is a `FAILED` or `ERROR` line.
+KR4: `Select-String -Path src,tests -Pattern '[s]k-' -Recurse` prints nothing, i.e. no real key pattern exists anywhere in code and tests.
+KR5: `test_hon_20_luong_ghi_dong_thoi_khong_mat_tin` is green with exactly 20 messages after running 20 threads.
+KR6: `test_lo_giua_chung_don_tep_tam` is green and afterwards the directory contains only the target file, with no file carrying the `.tmp-` suffix.
+KR7: `test_crlf_duoc_chuan_hoa_ve_lf_khi_ghi` is green and the resulting `.env` file contains no `\r` character.
+KR8: `test_khoa_duoc_doc_lai_moi_luot` is green with `so_lan_goi == 2`, proving that the key is re-read on every `reply` turn.
+KR9: `map_openai_error` has exactly 5 branches and the 6 tests of `test_map_openai_error.py` are green, mapping in order 401, 503, 504, 502, 500.
+KR10: `test_tap_bi_tu_choi_quyen_ghi_thi_save_that_bai` is green, i.e. when write permission is denied `save` re-raises the error and `.env` is unchanged.
+KR11: `test_tep_hong_bi_doi_ten_roi_bat_dau_rong` is green, i.e. the corrupt file is renamed with the `.corrupt-` suffix and the repository starts empty instead of crashing.
+KR12: the total line count of the 14 files does not exceed 620 lines, computed by summing the line-count column in the report table.
+KR13: the `py -m pytest -q` run takes no more than 10 seconds on the student's machine.
+KR14: in `infrastructure/` no `import` line points to `..application`, `..interface` or `..config`, checked with `Select-String -Path src\chatbot\infrastructure -Pattern 'application|interface|config'` printing nothing.
+
+| B3 | Shared class key means HTTP 429 bursts: retry with exponential backoff plus jitter, then a polite user message | P5,P6 | `backoff` |
+| B14 | Every function in its own file, every file under 100 lines, checked by a test | P0,P3,P4,P5,P9 | `100 lines` |
+| B24 | Each prompt states how to resume if opencode stops midway (re-paste rule, checkpoint by tests) | P1..P9 | `resume|checkpoint` |

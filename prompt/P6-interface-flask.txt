@@ -1,0 +1,1870 @@
+PROMPT P6: Flask interface layer and run.py (TDD). Paste the WHOLE text below into opencode in order P0 to P9; paste P6 only after all earlier prompts are green.
+
+# 1. Role:
+
+Software engineering expert and a 12th-grade teacher, specialised in DDD architecture in Python and in designing the HTTP interface layer with Flask. The job of this role is to lay down the formal spec rules for the entire interface layer, strong enough for a coding assistant to produce exactly ten source files in `interface/`, one bootstrap file `run.py`, and two evidence test files. The responsibility boundary is clear: topmost layer only, HTTP orchestration and error mapping only, absolutely no business logic, no reading of configuration files, no direct calls to the model. This role is also the one that decides the status codes and the error codes, so every row of table B7 must be echoed back as a test with a fixed name containing that exact status code. Style: short sentences, imperative, no rambling, every rule checkable by a PowerShell command or by a test. This role will speak plainly when a blueprint requirement contradicts a testing rule, and will choose the testing rule as the standard, while explicitly recording the substitute error code.
+
+# 2. Context (5W1H):
+
+**What**: Build the Flask interface layer consisting of ten source files in `src/chatbot/interface/` and one `run.py` file at the project root, plus two test files `tests/test_routes.py` and `tests/test_first_run_flow.py`. Each file under 100 lines, one function per file, no file violating the B2 directory tree rules.
+
+**Why**: The interface layer is where the browser's JSON meets the use case in the application layer. If the error mapping is wrong, the learner sees a stack trace on the UI and does not know what to do; if the localhost check is skipped, the API key may be written from an external network. Therefore this layer must be a pure, thin, fully testable HTTP contract.
+
+**Who/Where**: Windows 11 platform, PowerShell, Python invoked with `py`, running locally at `http://127.0.0.1:2610`. The readers are the opencode coding assistant and learners new to both DDD and TDD. Every file lives inside the chatbot directory tree fixed at B2, no files outside that tree may be invented.
+
+**When**: P6 stands immediately after P5, that is, when the config, domain, application, infrastructure layers already have green tests and the dependencies are already installed in the virtual environment. P6 hands over to P7, which is the MUI UI reading exactly those endpoints and error codes that P6 defines, so the JSON field names and status codes must stay unchanged until P9.
+
+**How**: Write the test first following TDD, run `py -m pytest -q` to see red, write the minimum code to make it green, then run the whole suite again. Use `app.test_client()` so no browser needs to be opened. Use the fakes in `tests/fakes/` for memory, model, and key vault so tests run network-independent.
+
+**Prompt shape**: The output of P6 is this formal spec text, at least five thousand words, comprising PRE, POST, INV, ERR, KILL, numbered steps, a decision table, and complete sample code in python or javascript, each block runnable and under 100 lines. No summarising, no greetings, no apologies.
+
+**Constraints**: Never write innerHTML except in order to forbid it. Never use python3, curl, sudo, source, grep. Never mention Telegram or BotFather. Never write a string starting with `sk-`. The sample key in tests is always `TEST_KEY_` followed by twenty x characters. Configuration is read only through the Settings class; the interface layer never reads environment variables to decide the port or the file name.
+
+**First-run API key flow linkage**: Steps one through seven of the first-run flow in B1 lie inside P6's scope. `GET /api/setup/status` returns `{"configured": false}` so that P7 opens the dialog; `POST /api/setup` receives the key, calls the use case, then returns `{"ok": true}` so that P7 closes the dialog and goes straight into the chat frame without restarting. Because the key must be re-read on every turn, `run.py` and `create_app` must not capture the key value into a closure variable at startup; the key vault must be injected into the application as a live object.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Preconditions and invariants
+
+PRE:
+
+- PRE.1: The B2 directory tree already exists and the layers below interface have been created. Check with `Test-Path src/chatbot/domain/message.py`.
+- PRE.2: P5 is green. Check with `py -m pytest -q tests/test_langchain_chat_model.py`; the command must not print the letter F.
+- PRE.3: The virtual environment is activated and Flask is installed. Check with `py -c "import flask; print(flask.__version__)"`.
+- PRE.4: The test files `tests/test_routes.py` and `tests/test_first_run_flow.py` are written before the source code. Check with `Test-Path tests/test_routes.py`.
+- PRE.5: `create_app` receives exactly five components `settings`, `repo`, `model`, `store`, `system_prompt_loader`. Check with a test asserting the `deps` key is a dict.
+- PRE.6: `MAX_CONTENT_LENGTH` equals `16 * 1024`. Check with a test reading `app.config["MAX_CONTENT_LENGTH"]`.
+- PRE.7: The `system-prompt.txt` file may be missing and the server must still start. Check with a test deleting the file then calling `/api/health`.
+- PRE.8: The API key may be empty at startup. Check with a test building the application with a fake vault whose `is_configured` returns False.
+- PRE.9: The fakes in `tests/fakes/` allow injecting errors through the `error` attribute. Check with a test setting `fake_model.error` then calling `/api/chat`.
+- PRE.10: `run.py` can be run with `py run.py` from the project root. Check with `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`.
+- PRE.11: No additional file outside the B2 directory tree is created. Check by listing and comparing by hand against B2.
+- PRE.12: `pytest.ini` has declared the root path so tests can import `chatbot`. Check with `py -m pytest -q --collect-only | Select-String "test_routes"`.
+- PRE.13: `create_app` must not run `app.run`; every check goes through `app.test_client()`. Check with a test scanning for the string `app.run` in the `interface/` directory and it must be absent.
+- PRE.14: Each file in `routes/` receives `deps` only through a parameter or through `current_app.config["deps"]`, never reads files. Check with a test building the app with `deps` then calling each route.
+
+POST:
+
+- POST.1: All five endpoints return exactly the status codes in the decision table in section 3c. Check with a test using `assert response.status_code == 200` for each table row.
+- POST.2: Every error returns exactly the two-field structure `error` and `message`. Check with `assert set(response.get_json()) == {"error", "message"}`.
+- POST.3: No response contains the string `Traceback` nor an internal file name. Check with a test scanning all of `response.get_data(as_text=True)`.
+- POST.4: `POST /api/chat` returns three fields `reply`, `model`, `ms`. Check with a test verifying the key set.
+- POST.5: `POST /api/chat` ignores every extra field in the request body. Check with a test sending `{"message": "chao", "session_id": "abc-12345", "history": [...], "role": "system"}` and still receiving 200.
+- POST.6: `GET /` serves `static/index.html`. Check with `assert "html" in response.headers["Content-Type"]`.
+- POST.7: A body over 16 KB returns 413 with the error code `payload_too_large`. Check with a test sending a twenty-thousand character string.
+- POST.8: Missing `Content-Type: application/json` returns 415 with the code `unsupported_media_type`. Check with a test sending `data="{}"` without a content type.
+- POST.9: `run.py` prints the URL and the accented Vietnamese message before calling `app.run`. Check with `py run.py` and reading the first line.
+- POST.10: Re-initialising the application after saving the key still makes `/api/setup/status` return `true`. Check with `test_key_survives_app_restart` in `test_first_run_flow.py`.
+- POST.11: A busy port makes `run.py` print the Vietnamese message suggesting changing `PORT` in `.env` then exit with code 1. Check with a test calling the message-building function, without needing to actually occupy a real port.
+- POST.12: `test_first_run_flow.py` contains exactly seven tests matching the seven steps of the first-run flow in B1. Check with `py -m pytest -q tests/test_first_run_flow.py -v`.
+
+INV:
+
+- INV.1: Dependency arrows travel in one direction only: interface calls application, application calls domain. Check with a test scanning `import` in `interface/`; there must be no `from chatbot.domain` in any file other than `create_app` when building objects.
+- INV.2: No file in `interface/` may `import langchain`, `openai`, `dotenv`. Check with a test reading the file contents.
+- INV.3: Each use case name and signature matches B5: `get_setup_status`, `configure_api_key`, `send_message`, `reset_conversation`. Check with a test calling indirectly through the route.
+- INV.4: Each function or each class lives in exactly one file according to B2. Check with a test counting top-level function definitions per file.
+- INV.5: Every file in `interface/` and `run.py` is under 100 lines. Check with the PowerShell 100-line check command in B11; the command must print nothing.
+- INV.6: The API key never appears in a response, a log, or in `memory.json` content. Check with a test scanning for `TEST_KEY_` in `response.get_data(as_text=True)`.
+- INV.7: The key must not be stored in browser-side `localStorage`; the server layer keeps the key only in `.env`. Check with a test reading the `.env` file after `POST /api/setup`.
+- INV.8: Configuration is read only through the Settings class; routes never read `os.environ` to decide the port or the file. Check with a test scanning for the string `environ` in `interface/`.
+- INV.9: Every internal error goes through a single error-JSON building function, with no `except` inventing status codes in many places. Check with a test counting `error_response` functions.
+- INV.10: `/api/setup` is rejected when `request.remote_addr` is not in `{"127.0.0.1", "::1"}`, code 403 `forbidden`. Check with a test passing `environ_base={"REMOTE_ADDR": "10.0.0.5"}`.
+- INV.11: `/api/chat` and `/api/reset` do not require localhost but still run on the local port because Settings blocks `0.0.0.0`. Check with a test configuring this in `test_load_settings.py`.
+- INV.12: The check order is fixed: localhost, then content type, then JSON, then content. Check with a test sending a non-localhost request missing the content type and it must receive 403.
+- INV.13: Each model call in one chat turn happens exactly once. Check with a test counting `calls` on the fake.
+- INV.14: A model error must not lose the old history. Check with a test comparing `repo.get` before and after one failing chat turn.
+- INV.15: An empty AI message returned by the model must become a 502 error with the code `empty_reply`, and the empty message must not be written into memory. Check with a test using a fake returning `""`.
+- INV.16: Model error codes are preserved after mapping: 401, 502, 503, 504, 500. Check with a test looping over the mapping table.
+- INV.17: `/api/reset` with a non-existent session returns 200 `{"ok": true}`. Check with a test using a random unsaved session.
+- INV.18: A JSON body that is an array or a string instead of an object returns 400 `bad_json`, not a 500 error. Check with a test sending `[1,2,3]`.
+- INV.19: A missing required field returns the correct business code, not a KeyError 500. Check with a test missing `message` and missing `session_id`.
+- INV.20: `run.py` catches `OSError` when the port is busy, prints the suggestion to change `PORT` in `.env`, exits with code 1. Check with a test calling the message-building function and inspecting the string.
+- INV.21: `debug=False` is always passed to `app.run`. Check with a test scanning for the string `debug=True` in `run.py` and it must be absent.
+- INV.22: Tests must not call out of the machine. Check with a test using only `app.test_client()`, no HTTP library.
+- INV.23: DDD: routes only orchestrate, containing no business expression whatsoever. Check with a test reading route file contents; there must be no string-length comparison nor manual string slicing.
+- INV.24: TDD: each row of table B7 has at least one test with a fixed name containing the corresponding status code. Check with `py -m pytest -q tests/test_routes.py -v`.
+- INV.25: The sample key in tests is always `TEST_KEY_` followed by twenty x characters, and no test file contains a string starting with `sk-`. Check with a test scanning the contents of `tests/`.
+- INV.26: Every error returns `Content-Type` of `application/json`, including 404 and 405. Check with a test inspecting `response.mimetype` for the error codes.
+- INV.27: No route manually builds a `Response` with `json.dumps`; everything goes through `json_error`. Check with a test scanning for the string `dumps` in the `routes/` directory.
+- INV.28: `create_app` registers exactly five routes and registers no additional API path other than `/`. Check with a test listing `app.url_map.iter_rules()`.
+
+ERR:
+
+- ERR.1: Wrong body type ⇒ 415 `unsupported_media_type`. Decision table: `Content-Type` different from `application/json` ⇒ 415, stop before reading the body.
+- ERR.2: Malformed JSON ⇒ 400 `bad_json`. Do not throw, do not display parser details.
+- ERR.3: JSON that is not an object ⇒ 400 `bad_json`.
+- ERR.4: Malformed `session_id` ⇒ 400 `invalid_session`.
+- ERR.5: Empty or overly long `message` ⇒ 400 `invalid_message`.
+- ERR.6: Malformed `api_key` ⇒ 400 `invalid_api_key`.
+- ERR.7: No key yet when calling `/api/chat` ⇒ 409 `api_key_missing`.
+- ERR.8: Model returns an empty string ⇒ 502 `empty_reply`.
+- ERR.9: Model rejects the key ⇒ 401 `invalid_api_key`.
+- ERR.10: Overloaded ⇒ 503 `rate_limited`; too slow ⇒ 504 `upstream_timeout`; connection lost ⇒ 502 `upstream_unavailable`; unexpected error ⇒ 500 `upstream_error`.
+- ERR.11: Body exceeding `MAX_CONTENT_LENGTH` ⇒ 413 `payload_too_large`.
+- ERR.12: Writing `.env` fails ⇒ 500 `save_failed`, with the Vietnamese message stating to run again from PowerShell with write permission on the project directory.
+- ERR.13: Path does not exist ⇒ 404 with the JSON code `not_found`, not the default HTML page.
+- ERR.14: Method not allowed ⇒ 405 with the JSON code `method_not_allowed`.
+- ERR.15: `session_id` absent from the body ⇒ 400 `invalid_session`, not 500 `internal_error`. Check with a test sending `{"message": "chao"}`.
+- ERR.16: `message` absent from the body ⇒ 400 `invalid_message`. Check with a test sending `{"session_id": "abc-12345"}`.
+- ERR.17: `api_key` absent from the `POST /api/setup` body ⇒ 400 `invalid_api_key`. Check with a test sending `{}` with a JSON content type.
+- When there is no dedicated code, every unknown exception falls back to 500 `internal_error` with a fixed Vietnamese message, absolutely without attaching `exc_info`.
+
+KILL:
+
+- KILL.1: Stop immediately if `Test-Path src/chatbot/application/send_message.py` returns False; do not write P6 while P4 is unfinished.
+- KILL.2: Stop if `py -m pytest -q tests/test_langchain_chat_model.py` prints the letter F.
+- KILL.3: Stop if any route is found to `import` directly `json_memory_repository` or `langchain_chat_model`; the interface layer only receives objects through `deps`.
+- KILL.4: Stop if a file in `interface/` reaches 100 lines or more.
+- KILL.5: Stop if additional files outside the B2 directory tree must be created.
+- KILL.6: Stop if any response contains `Traceback` after deliberately causing an error.
+- KILL.7: Stop if `py -m pytest -q` reports errors in a file other than `test_routes.py` and `test_first_run_flow.py` caused by P6's changes.
+- KILL.8: Stop if the check order produces a 415 state for a request without localhost authorisation; it must be 403.
+
+## 3b. Short definitions
+
+- **opencode**: an AI programming assistant that runs in a command-line window, reads the prompt, then generates source code according to the specification.
+- **API**: application programming interface, here an external service that returns text.
+- **endpoint**: an HTTP path with a determined method and body format, for example `/api/chat`.
+- **venv**: Python virtual environment, created with `py -m venv .venv`, isolating libraries for the project.
+- **pytest**: Python testing library, run with `py -m pytest -q`.
+- **DDD**: domain-driven design, layering by role and keeping the dependency arrows one-way.
+- **TDD**: test-driven development, writing a red test first then writing code to make it green.
+- **MUI**: React UI library from Material, used via the UMD build from CDN in P7.
+- **formal spec**: formal specification using the PRE conditions, POST postconditions, INV invariants, ERR error rules, and KILL stop conditions.
+- **first-run**: the first execution when the machine has no API key, where the system must ask for the key and then run immediately.
+- **use case**: a function in the application layer describing one business behaviour, for example `send_message`.
+- **fake**: an object substituting real behaviour in tests, for example `FakeChatModel`.
+- **payload**: the body part of an HTTP request carrying data.
+- **traceback**: the full text of the internal error chain, absolutely never returned to the browser.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation procedure (TDD)
+
+### PRE
+
+1. Assume `P0` has produced `AGENTS.md` and has already explained ONCE the terms `opencode`, `API`, `endpoint`, `venv`, `pytest`, `DDD`, `TDD`, `MUI`, `formal spec`. P6 only refers to that original meaning and does NOT define it a second time.
+2. Assume `P1` has finished setting up `venv`, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example`, and has pre-created every empty file of `src/chatbot/interface/` plus the two empty files `tests/test_routes.py`, `tests/test_first_run_flow.py`.
+3. Assume `P2` through `P5` are green: `config/*`, `domain/*`, `application/*`, `infrastructure/*`, `tests/fakes/*` have exactly the function signatures of `B4`, `B5`, `B6`. P6 does NOT modify those files; if it detects an error it reports back to the corresponding prompt.
+4. INV: `interface` may only import `flask`, `werkzeug`, `pathlib` and the functions of `application`; it is allowed to import the exception classes fixed in `B4` in order to translate exceptions into return codes, but must NOT redefine or rewrap exception classes.
+5. INV: do NOT create any file outside the `B2` directory tree. The `src/chatbot/interface/routes/` directory has NO `__init__.py`, so submodules must be imported in the form `from src.chatbot.interface.routes import chat_route` (namespace package per PEP 420); do NOT add an `__init__.py` to `routes/` "for convenience".
+6. INV: every file in P6's scope stays under 100 lines. In the two test files, use ONE blank line between top-level functions to save lines; this is a deliberate exception applying only to the two test files named above, production code keeps two blank lines as is conventional.
+7. INV: in every Python code block of this prompt, do NOT use continuation lines inside parentheses; each statement lies entirely on one line, dict literals write one key per line. Purpose: a code block copied out must run immediately without depending on indentation.
+8. INV: `create_app` does not keep state per tab or per user session; all session state lives only in the `repo` of the lower layer. This is the basis of the "two browser tabs in the same session" case in `B10`.
+9. INV: `interface` knows nothing about the API key beyond `store.is_configured()` and `store.save(...)`; no route may call `store.get()`.
+10. INV: the test key is always of the form `TEST_KEY_` plus 20 x's; no string starts with a vendor prefix.
+11. INV: production code does NOT hardcode the API address and does NOT remove the `OPENAI_BASE_URL` environment variable that the automated tests use per `B13`.
+12. INV: every Vietnamese string in P6's code, including returned messages, must carry full diacritics. The `\uXXXX` escape form in JSON is valid, the browser restores the diacritics on its own, there is no need to use `ensure_ascii=False` in P6's code.
+13. ERR pre-condition: if `py -m pytest --collect-only -q` reports a collection error, stop immediately and report the missing file name; do NOT patch it by inserting system paths or setting path environment variables, because `P1`'s `pytest.ini` already declares the correct project root.
+14. INV: do NOT run the server in the `opencode` shell; every real run goes through `Start-Process` per `B11`.
+
+### POST
+
+1. `py -m pytest -q` fully green, including `tests/test_routes.py` and `tests/test_first_run_flow.py`.
+2. Every row of table `B7` has at least one corresponding test; every step of the `B1` flow has at least one assertion in `tests/test_first_run_flow.py`.
+3. NO response contains an error trace; NO response contains an API key value.
+4. `py run.py` starts up when `.env` has no key yet, and prints a hint to change `PORT` then returns code 1 when the port is busy.
+5. The case-to-test-name mapping table in step 16 has no empty cell left; every entry in `3d` has a corresponding row in `ERR` or `KILL`.
+
+### Round 1 - RED: `tests/test_routes.py`
+
+10. Create `tests/test_routes.py` with the following local functions, using no shared file at all in `tests/`:
+    - `SETTINGS`: dict with exactly the nine fields of `B3`, building a frozen `Settings` directly so that tests do not depend on the learner's real `.env` file.
+    - `build_app(store=None, error=None, reply_text="Xin chào") -> tuple`: builds `deps` consisting of `settings`, `repo`, `model`, `store` from `tests/fakes/`, `system_prompt_loader` is a lambda returning a fixed string; sets `app.config.update(TESTING=True, PROPAGATE_EXCEPTIONS=False)`; returns both `app` and `repo`.
+    - `client(store=None, error=None, reply_text="Xin chào")`: shorthand for `build_app(...)[0].test_client()`.
+    - `assert_error(response, status, code)`: asserts the status code and the `error` field; on mismatch it prints the response body to ease diagnosis.
+    - `CHAT`: standard body `{"message": ..., "session_id": ...}`, used with `dict(CHAT, ...)` to create variants without mutating the original body.
+11. INV for the test file: every `build_app` call creates a NEW fake `store`, `repo`, `model` so that no state leaks between tests; the test key is of the form `TEST_KEY_` plus 20 x's.
+12. INV for the test file: for 200 use `json=`; for 415 use `data=` without a content type; to simulate an unknown address pass `environ_base=REMOTE` to `test_client`, do NOT set it in `app.config`.
+13. INV about fake signatures: `FakeApiKeyStore(key=...)`, `FakeChatModel(reply_text=..., error=...)`, `FakeMemoryRepository()`, `repo.get(session_id) -> list[Message]`. If `P5`'s fakes have a different signature, report to `P5`, do NOT modify the lower layer inside `P6`.
+14. File content, written BEFORE any production file of `P6`:
+
+```python
+from src.chatbot.config.settings import Settings
+from src.chatbot.domain.errors import UpstreamError
+from src.chatbot.interface.create_app import create_app
+from tests.fakes.fake_api_key_store import FakeApiKeyStore
+from tests.fakes.fake_chat_model import FakeChatModel
+from tests.fakes.fake_memory_repository import FakeMemoryRepository
+
+KEY = "TEST_KEY_" + "x" * 20
+SID = "abc-1234"
+REMOTE = {"REMOTE_ADDR": "10.0.0.7"}
+CHAT = {"message": "Chào bạn", "session_id": SID}
+BAD_KEYS = ["", "   ", "abc", KEY + " mat", "TEST_KEY_" + "y" * 20 + " ñ"]
+POST_PATHS = ["/api/setup", "/api/chat", "/api/reset"]
+UPSTREAM_CASES = [(401, "api_key_invalid"), (502, "upstream_unavailable"), (503, "upstream_busy"), (504, "upstream_timeout")]
+SETTINGS = {"openai_api_key": "", "openai_model": "gpt-4o-mini", "openai_temperature": 0.3, "openai_timeout": 30, "host": "127.0.0.1", "port": 2610, "memory_file": "memory.json", "max_messages": 5, "system_prompt_file": "system-prompt.txt"}
+
+def build_app(store=None, error=None, reply_text="Xin chào"):
+    repo = FakeMemoryRepository()
+    model = FakeChatModel(reply_text=reply_text, error=error)
+    store = FakeApiKeyStore(key=KEY) if store is None else store
+    deps = {"settings": Settings(**SETTINGS), "repo": repo, "model": model, "store": store, "system_prompt_loader": lambda path: "Bạn là trợ lý."}
+    app = create_app(deps)
+    app.config.update(TESTING=True, PROPAGATE_EXCEPTIONS=False)
+    return app, repo
+
+def client(store=None, error=None, reply_text="Xin chào"):
+    return build_app(store, error, reply_text)[0].test_client()
+
+def assert_error(response, status, code):
+    assert response.status_code == status, response.get_data(as_text=True)
+    assert response.get_json()["error"] == code
+
+def test_setup_saves_valid_key_and_rejects_bad_ones():
+    fresh = client(FakeApiKeyStore(key=""))
+    body = fresh.post("/api/setup", json={"api_key": KEY, "model": "trường thừa bị bỏ qua"}).get_json()
+    assert body == {"ok": True}
+    assert KEY not in str(body)
+    assert fresh.get("/api/setup/status").get_json() == {"configured": True}
+    for bad in BAD_KEYS:
+        assert_error(client().post("/api/setup", json={"api_key": bad}), 400, "invalid_api_key")
+
+def test_setup_forbidden_from_remote_address():
+    assert_error(client().post("/api/setup", json={"api_key": KEY}, environ_base=REMOTE), 403, "forbidden")
+
+def test_protocol_errors_return_json():
+    for path in POST_PATHS:
+        assert_error(client().post(path, data='{"message":"Chào bạn"}'), 415, "unsupported_media_type")
+        assert_error(client().post(path, data="{bad", content_type="application/json"), 400, "bad_request")
+    assert_error(client().post("/api/chat", json=dict(CHAT, message="a" * 20000)), 413, "payload_too_large")
+    assert_error(client().get("/api/khong-ton-tai"), 404, "not_found")
+    assert_error(client().get("/api/chat"), 405, "method_not_allowed")
+
+def test_chat_returns_reply_model_and_ms():
+    body = client().post("/api/chat", json=dict(CHAT, history=["bỏ qua"])).get_json()
+    assert body["reply"] == "Xin chào"
+    assert body["model"] == "gpt-4o-mini"
+    assert isinstance(body["ms"], int) and body["ms"] >= 0
+
+def test_chat_error_codes():
+    assert_error(client(FakeApiKeyStore(key="")).post("/api/chat", json=CHAT), 409, "api_key_missing")
+    assert_error(client().post("/api/chat", json=dict(CHAT, message="   ")), 400, "invalid_message")
+    assert_error(client().post("/api/chat", json=dict(CHAT, session_id="x")), 400, "invalid_session")
+    assert_error(client(reply_text="  ").post("/api/chat", json=CHAT), 502, "empty_reply")
+    crash = client(error=RuntimeError("lỗi nội bộ")).post("/api/chat", json=CHAT)
+    assert_error(crash, 500, "internal_error")
+    assert "Traceback" not in crash.get_data(as_text=True)
+
+def test_chat_maps_upstream_status():
+    for status, code in UPSTREAM_CASES:
+        broken = client(error=UpstreamError(status, "lỗi mô hình")).post("/api/chat", json=CHAT)
+        assert_error(broken, status, code)
+```
+
+15. Note on the edge cases covered in that file: the empty key and the whitespace-only key are in `BAD_KEYS`; the key with internal whitespace and the key with Unicode characters are also in `BAD_KEYS`, because `validate_api_key` accepts only printable ASCII characters, not accented characters.
+16. Mapping of the cases that must be covered to test names, checked manually before writing production code:
+
+| Case to cover | Test file | Test name |
+|---|---|---|
+| `POST /api/setup` 200 and does not return the key | `tests/test_routes.py` | `test_setup_saves_valid_key_and_rejects_bad_ones` |
+| `GET /api/setup/status` switches from wrong to right | `tests/test_routes.py` | `test_setup_saves_valid_key_and_rejects_bad_ones` |
+| `POST /api/setup` 400 `invalid_api_key` | `tests/test_routes.py` | `test_setup_saves_valid_key_and_rejects_bad_ones` |
+| Extra field in the `setup` body is ignored | `tests/test_routes.py` | `test_setup_saves_valid_key_and_rejects_bad_ones` |
+| `POST /api/setup` 403 `forbidden` from an unknown address | `tests/test_routes.py` | `test_setup_forbidden_from_remote_address` |
+| Missing `Content-Type` for the three `endpoint`s | `tests/test_routes.py` | `test_protocol_errors_return_json` |
+| Broken body on the three `endpoint`s | `tests/test_routes.py` | `test_protocol_errors_return_json` |
+| Body over 16 KB returns 413 | `tests/test_routes.py` | `test_protocol_errors_return_json` |
+| Unknown path 404, wrong method 405 | `tests/test_routes.py` | `test_protocol_errors_return_json` |
+| `POST /api/chat` 200 with `reply`, `model`, `ms` | `tests/test_routes.py` | `test_chat_returns_reply_model_and_ms` |
+| Extra `history` field is ignored | `tests/test_routes.py` | `test_chat_returns_reply_model_and_ms` |
+| 409 `api_key_missing` | `tests/test_routes.py` | `test_chat_error_codes` |
+| 400 `invalid_message` and 400 `invalid_session` | `tests/test_routes.py` | `test_chat_error_codes` |
+| 502 `empty_reply` when the model returns an empty string | `tests/test_routes.py` | `test_chat_error_codes` |
+| 500 `internal_error` and no error trace leaks | `tests/test_routes.py` | `test_chat_error_codes` |
+| 401, 502, 503, 504 from the model | `tests/test_routes.py` | `test_chat_maps_upstream_status` |
+| `GET /` returns HTML and `GET /api/health` before any key exists | `tests/test_first_run_flow.py` | `test_root_and_health_answer_before_any_key` |
+| `POST /api/reset` 200 and clears the history | `tests/test_first_run_flow.py` | `test_reset_clears_history_and_accepts_new_session` |
+| Reset of an unsaved session still returns 200 | `tests/test_first_run_flow.py` | `test_reset_clears_history_and_accepts_new_session` |
+| Reset 400 `invalid_session` | `tests/test_first_run_flow.py` | `test_reset_clears_history_and_accepts_new_session` |
+| The seven steps of the first-run flow of `B1` | `tests/test_first_run_flow.py` | `test_first_run_flow_full_seven_steps` |
+| The key is still there after application restart | `tests/test_first_run_flow.py` | `test_key_survives_new_app_instance` |
+| A model error writes nothing to memory | `tests/test_first_run_flow.py` | `test_model_error_does_not_store_history` |
+| Two turns in the same session keep all four messages | `tests/test_first_run_flow.py` | `test_two_turns_same_session_keep_all_messages` |
+| Vietnamese with diacritics, emoji, HTML special characters | `tests/test_first_run_flow.py` | `test_vietnamese_and_script_tag_are_plain_text` |
+
+17. Run: `.\.venv\Scripts\Activate.ps1` then `py -m pytest tests/test_routes.py -q`.
+    Expected result of the RED round: an import error for `src.chatbot.interface.create_app` or an `AttributeError` because the function does not exist yet; it must NOT be green.
+
+### Round 2 - GREEN: the `interface` layer
+
+18. Create `src/chatbot/interface/json_error.py` with `error_response(status, code, message)` and `register_error_handlers(app) -> None`.
+    Pseudocode: `REGISTER errorhandler for 400, 404, 405, 413; REGISTER errorhandler(Exception): IF error is HTTPException THEN return error ELSE log type(error).__name__ then return 500 internal_error`.
+    INV: the error response body always has exactly the two keys `error` and `message`; Vietnamese carries diacritics; the log records only the exception class name.
+    Check: `py -m pytest tests/test_routes.py -q -k "protocol"` is still red because the route does not exist yet.
+
+```python
+from flask import jsonify
+from werkzeug.exceptions import HTTPException
+
+
+def error_response(status: int, code: str, message: str):
+    return jsonify({"error": code, "message": message}), status
+
+
+def register_error_handlers(app) -> None:
+    @app.errorhandler(400)
+    def bad_request(_error):
+        return error_response(400, "bad_request", "Thân yêu cầu không hợp lệ")
+
+    @app.errorhandler(404)
+    def not_found(_error):
+        return error_response(404, "not_found", "Không tìm thấy đường dẫn")
+
+    @app.errorhandler(405)
+    def wrong_method(_error):
+        return error_response(405, "method_not_allowed", "Phương thức không được phép")
+
+    @app.errorhandler(413)
+    def too_large(_error):
+        return error_response(413, "payload_too_large", "Nội dung gửi lên vượt 16 KB")
+
+    @app.errorhandler(Exception)
+    def unhandled(error):
+        if isinstance(error, HTTPException):
+            return error
+        app.logger.error("Lỗi không mong đợi: %s", type(error).__name__)
+        return error_response(500, "internal_error", "Có lỗi không mong đợi")
+```
+
+19. Create `src/chatbot/interface/require_json.py` with the two error classes `UnsupportedMediaType`, `MalformedJson`, the function `require_json()` returning the `guard` function, and the function `to_response(exc)`.
+    Pseudocode of `guard`: `IF request.mimetype != "application/json" THEN raise UnsupportedMediaType; IF NOT isinstance(request.get_json(silent=True), dict) THEN raise MalformedJson`.
+    Pseudocode of `to_response`: `IF exc is UnsupportedMediaType THEN 415 unsupported_media_type ELSE 400 bad_request`.
+    INV: `silent=True` is mandatory, otherwise a broken body throws `BadRequest` outside the fence and becomes a 500.
+    Check: `py -m pytest tests/test_routes.py -q -k "protocol"` is still red.
+
+```python
+from flask import request
+
+from src.chatbot.interface.json_error import error_response
+
+
+class UnsupportedMediaType(Exception):
+    pass
+
+
+class MalformedJson(Exception):
+    pass
+
+
+def require_json():
+    def guard() -> None:
+        if request.mimetype != "application/json":
+            raise UnsupportedMediaType()
+        if not isinstance(request.get_json(silent=True), dict):
+            raise MalformedJson()
+
+    return guard
+
+
+def to_response(exc):
+    if isinstance(exc, UnsupportedMediaType):
+        return error_response(415, "unsupported_media_type", "Phải gửi Content-Type: application/json")
+    return error_response(400, "bad_request", "Thân yêu cầu không phải đối tượng JSON")
+```
+
+20. Create `src/chatbot/interface/require_localhost.py` with `ALLOWED_ADDRESSES`, the class `ForbiddenAddress`, the function `require_localhost()` and the function `to_response(_exc)`.
+    Pseudocode: `IF request.remote_addr ∉ ALLOWED_ADDRESSES THEN raise ForbiddenAddress`; `to_response` always returns 403 `forbidden`.
+    INV: only `/api/setup` uses this fence, per `B7`; the remaining `endpoint`s do not call this fence.
+    Check: `py -m pytest tests/test_routes.py -q -k "forbidden"` red.
+
+```python
+from flask import request
+
+from src.chatbot.interface.json_error import error_response
+
+ALLOWED_ADDRESSES = {"127.0.0.1", "::1"}
+
+
+class ForbiddenAddress(Exception):
+    pass
+
+
+def require_localhost():
+    def guard() -> None:
+        if request.remote_addr not in ALLOWED_ADDRESSES:
+            raise ForbiddenAddress()
+
+    return guard
+
+
+def to_response(_exc):
+    return error_response(403, "forbidden", "Chỉ cho phép truy cập từ máy cục bộ")
+```
+
+21. Create `src/chatbot/interface/routes/health_route.py` with `register(app) -> None`.
+    Pseudocode: `REGISTER GET /api/health returning jsonify({"ok": True})`.
+    INV: this route does NOT touch `store`, does NOT touch `repo`, does NOT touch `model`; it must return 200 even when `.env` has no key yet, exactly step 1 and step 2 of `B1`.
+    Check: `py -m pytest tests/test_routes.py -q -k "chat"` is still red.
+
+```python
+from flask import jsonify
+
+
+def register(app) -> None:
+    @app.get("/api/health")
+    def health():
+        return jsonify({"ok": True})
+```
+
+22. Create `src/chatbot/interface/routes/setup_status_route.py` with `register(app, deps) -> None`, capturing `store = deps["store"]` once and then calling `get_setup_status(store)` in the view.
+    Pseudocode: `CALL get_setup_status(store) then jsonify the result`; absolutely do NOT call `store.get()`.
+    INV: this function is the only source that decides whether the API key dialog is shown in step 2 and step 7 of `B1`.
+    Check: `py -m pytest tests/test_routes.py -q -k "setup"` red because `create_app` does not exist yet.
+
+```python
+from flask import jsonify
+
+from src.chatbot.application.get_setup_status import get_setup_status
+
+
+def register(app, deps) -> None:
+    store = deps["store"]
+
+    @app.get("/api/setup/status")
+    def setup_status():
+        return jsonify(get_setup_status(store))
+```
+
+23. Create `src/chatbot/interface/routes/setup_route.py` with `register(app, deps) -> None`.
+    Pseudocode: `CALL require_json()() then require_localhost()(); TRY EXCEPT UnsupportedMediaType, MalformedJson, ForbiddenAddress to convert into responses; CALL configure_api_key(store, body.get("api_key", "")); EXCEPT InvalidApiKey return 400 invalid_api_key; EXCEPT OSError return 500 save_failed; ELSE return {"ok": true}`.
+    INV: error handling goes from specific to general; the response body never contains the key value; do NOT read `store.get()`.
+    Check: `py -m pytest tests/test_routes.py -q -k "setup"`.
+
+```python
+from flask import jsonify, request
+
+from src.chatbot.application.configure_api_key import configure_api_key
+from src.chatbot.domain.errors import InvalidApiKey
+from src.chatbot.interface.json_error import error_response
+from src.chatbot.interface.require_json import MalformedJson
+from src.chatbot.interface.require_json import UnsupportedMediaType
+from src.chatbot.interface.require_json import require_json
+from src.chatbot.interface.require_json import to_response as json_to_response
+from src.chatbot.interface.require_localhost import ForbiddenAddress
+from src.chatbot.interface.require_localhost import require_localhost
+from src.chatbot.interface.require_localhost import to_response as host_to_response
+
+
+def register(app, deps) -> None:
+    store = deps["store"]
+
+    @app.post("/api/setup")
+    def setup():
+        try:
+            require_json()()
+            require_localhost()()
+        except UnsupportedMediaType as exc:
+            return json_to_response(exc)
+        except MalformedJson as exc:
+            return json_to_response(exc)
+        except ForbiddenAddress as exc:
+            return host_to_response(exc)
+        body = request.get_json(silent=True)
+        try:
+            configure_api_key(store, body.get("api_key", ""))
+        except InvalidApiKey:
+            return error_response(400, "invalid_api_key", "Khóa API không đúng hình thức")
+        except OSError:
+            return error_response(500, "save_failed", "Không ghi được tệp .env trên đĩa")
+        return jsonify({"ok": True})
+```
+
+24. Create `src/chatbot/interface/routes/chat_route.py` with `register(app, deps) -> None` and the constant `UPSTREAM_ERRORS`.
+    Pseudocode: `CALL require_json()(); payload := request.get_json(silent=True); started := time.monotonic(); CALL send_message(repo, model, store, load_prompt(settings.system_prompt_file), settings.max_messages, session_id, message); EXCEPT ApiKeyMissing return 409; EXCEPT InvalidMessage return 400 invalid_message; EXCEPT InvalidSession return 400 invalid_session; EXCEPT UpstreamError look up UPSTREAM_ERRORS by exc.status, if missing then 500 internal_error; IF reply.strip() is empty THEN return 502 empty_reply; ELSE return {"reply", "model", "ms"} with ms := int((time.monotonic() - started) * 1000)`.
+    INV: do NOT read the `history` field from the client; do NOT write memory yourself; `ms` is measured with `time.monotonic`; `model` comes from `settings.openai_model`.
+    Check: `py -m pytest tests/test_routes.py -q -k "chat"`.
+
+```python
+import time
+
+from flask import jsonify, request
+
+from src.chatbot.application.send_message import send_message
+from src.chatbot.domain.errors import ApiKeyMissing, InvalidMessage, InvalidSession, UpstreamError
+from src.chatbot.interface.json_error import error_response
+from src.chatbot.interface.require_json import MalformedJson
+from src.chatbot.interface.require_json import UnsupportedMediaType
+from src.chatbot.interface.require_json import require_json
+from src.chatbot.interface.require_json import to_response as json_to_response
+
+UPSTREAM_ERRORS = {
+    401: ("api_key_invalid", "Khóa API không đúng, nhập lại"),
+    502: ("upstream_unavailable", "Không kết nối được dịch vụ mô hình"),
+    503: ("upstream_busy", "Hệ thống đang quá tải, thử lại sau"),
+    504: ("upstream_timeout", "Mô hình trả lời quá lâu"),
+}
+
+
+def register(app, deps) -> None:
+    settings, repo = deps["settings"], deps["repo"]
+    model, store = deps["model"], deps["store"]
+    load_prompt = deps["system_prompt_loader"]
+
+    @app.post("/api/chat")
+    def chat():
+        try:
+            require_json()()
+        except UnsupportedMediaType as exc:
+            return json_to_response(exc)
+        except MalformedJson as exc:
+            return json_to_response(exc)
+        payload = request.get_json(silent=True)
+        session_id = payload.get("session_id", "")
+        text = payload.get("message", "")
+        system_prompt = load_prompt(settings.system_prompt_file)
+        started = time.monotonic()
+        try:
+            reply = send_message(repo, model, store, system_prompt, settings.max_messages, session_id, text)
+        except ApiKeyMissing:
+            return error_response(409, "api_key_missing", "Chưa nhập khóa API")
+        except InvalidMessage:
+            return error_response(400, "invalid_message", "Tin nhắn rỗng hoặc quá 4000 ký tự")
+        except InvalidSession:
+            return error_response(400, "invalid_session", "Mã phiên không hợp lệ")
+        except UpstreamError as exc:
+            code, note = UPSTREAM_ERRORS.get(exc.status, ("internal_error", "Có lỗi không mong đợi"))
+            return error_response(exc.status, code, note)
+        if not reply.strip():
+            return error_response(502, "empty_reply", "Mô hình trả lời rỗng, hãy thử lại")
+        ms = int((time.monotonic() - started) * 1000)
+        return jsonify({"reply": reply, "model": settings.openai_model, "ms": ms})
+```
+
+25. Create `src/chatbot/interface/routes/reset_route.py` with `register(app, deps) -> None`.
+    Pseudocode: `CALL require_json()(); CALL reset_conversation(repo, body.get("session_id", "")); EXCEPT InvalidSession return 400 invalid_session; ELSE return {"ok": true}`.
+    INV: resetting a session that does not exist is a silent success, not an error.
+    Check: `py -m pytest tests/test_first_run_flow.py -q -k "reset"` after `create_app` exists.
+
+```python
+from flask import jsonify, request
+
+from src.chatbot.application.reset_conversation import reset_conversation
+from src.chatbot.domain.errors import InvalidSession
+from src.chatbot.interface.json_error import error_response
+from src.chatbot.interface.require_json import MalformedJson
+from src.chatbot.interface.require_json import UnsupportedMediaType
+from src.chatbot.interface.require_json import require_json
+from src.chatbot.interface.require_json import to_response as json_to_response
+
+
+def register(app, deps) -> None:
+    repo = deps["repo"]
+
+    @app.post("/api/reset")
+    def reset():
+        try:
+            require_json()()
+        except UnsupportedMediaType as exc:
+            return json_to_response(exc)
+        except MalformedJson as exc:
+            return json_to_response(exc)
+        body = request.get_json(silent=True)
+        try:
+            reset_conversation(repo, body.get("session_id", ""))
+        except InvalidSession:
+            return error_response(400, "invalid_session", "Mã phiên không hợp lệ")
+        return jsonify({"ok": True})
+```
+
+26. Create `src/chatbot/interface/create_app.py` with `create_app(deps) -> Flask` and the module-level constant `STATIC_DIR`.
+    Pseudocode: `STATIC_DIR := parents[3] of __file__ / "static"; app := Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static"); app.config["MAX_CONTENT_LENGTH"] := 16 * 1024; CALL register_error_handlers; REGISTER the five routes one by one; REGISTER "/" returning send_from_directory(STATIC_DIR, "index.html")`.
+    INV: `STATIC_DIR` sits at module level and is read at request-serving time so that tests can replace it with `monkeypatch`; `MAX_CONTENT_LENGTH` is set immediately after the application is built; `create_app` must not accept any parameter other than `deps`.
+    Check: `py -m pytest tests/test_routes.py -q` must be fully green.
+
+```python
+from pathlib import Path
+
+from flask import Flask, send_from_directory
+
+from src.chatbot.interface.json_error import register_error_handlers
+from src.chatbot.interface.routes import chat_route
+from src.chatbot.interface.routes import health_route
+from src.chatbot.interface.routes import reset_route
+from src.chatbot.interface.routes import setup_route
+from src.chatbot.interface.routes import setup_status_route
+
+STATIC_DIR = Path(__file__).resolve().parents[3] / "static"
+
+
+def create_app(deps) -> Flask:
+    app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
+    app.config["MAX_CONTENT_LENGTH"] = 16 * 1024
+    register_error_handlers(app)
+    health_route.register(app)
+    setup_status_route.register(app, deps)
+    setup_route.register(app, deps)
+    chat_route.register(app, deps)
+    reset_route.register(app, deps)
+
+    def index():
+        return send_from_directory(STATIC_DIR, "index.html")
+
+    app.add_url_rule("/", "index", index)
+    return app
+```
+
+### Round 3 - CLEANUP
+
+27. Remove every temporary variable and every print statement in the `interface` layer; keep `STATIC_DIR`, `UPSTREAM_ERRORS` and `ALLOWED_ADDRESSES` as readable constants, with no extra comment in the code.
+28. Check the 100-line rule with the following command, it must NOT print any file name:
+
+```powershell
+Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+```
+
+29. Run `py -m pytest tests/test_routes.py -q` again, it must be green after the cleanup.
+
+### Round 4 - `run.py`
+
+30. Create `run.py` in the root directory with `BASE_DIR`, the function `main() -> int`, and the block `if __name__ == "__main__"`.
+    Pseudocode: `TRY settings := load_settings(BASE_DIR / ".env") EXCEPT SettingsError print to stderr and return 1; build EnvApiKeyStore, JsonMemoryRepository, LangChainChatModel; app := create_app(deps); PRINT the address to open the page and remind that the first run asks for the key; TRY app.run(host, port, debug=False) EXCEPT OSError print the hint to change PORT in .env then return 1`.
+    INV: do not print the key value; do NOT run the server in the `opencode` shell; do NOT hardcode the API address and do NOT remove `OPENAI_BASE_URL`; `debug=False` is mandatory so that an error trace never leaks out.
+    Check: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'`, `Start-Sleep -Seconds 3`, then `Invoke-RestMethod http://127.0.0.1:2610/api/health` must return `ok = True` even when `.env` has no key yet.
+    Also check the busy-port warning: open one more window running `py run.py`; the second window must print the hint to change `PORT` in `.env` and return code 1.
+
+```python
+import sys
+from pathlib import Path
+
+from src.chatbot.config.load_settings import load_settings
+from src.chatbot.config.settings_error import SettingsError
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.infrastructure.json_memory_repository import JsonMemoryRepository
+from src.chatbot.infrastructure.langchain_chat_model import LangChainChatModel
+from src.chatbot.infrastructure.load_system_prompt import load_system_prompt
+from src.chatbot.interface.create_app import create_app
+
+BASE_DIR = Path(__file__).resolve().parent
+
+
+def main() -> int:
+    try:
+        settings = load_settings(BASE_DIR / ".env")
+    except SettingsError as exc:
+        print(f"Lỗi cấu hình: {exc}", file=sys.stderr)
+        return 1
+    store = EnvApiKeyStore(BASE_DIR / ".env")
+    deps = {
+        "settings": settings,
+        "repo": JsonMemoryRepository(BASE_DIR / settings.memory_file),
+        "model": LangChainChatModel(settings, store),
+        "store": store,
+        "system_prompt_loader": load_system_prompt,
+    }
+    app = create_app(deps)
+    print(f"Mở trình duyệt tại http://{settings.host}:{settings.port}")
+    print("Chưa có khóa API? Trang sẽ hỏi khóa ở lần chạy đầu tiên.")
+    try:
+        app.run(host=settings.host, port=settings.port, debug=False)
+    except OSError:
+        print(f"Cổng {settings.port} đang bận. Hãy đổi PORT trong .env rồi chạy lại.", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
+### Round 5 - RED then GREEN: `tests/test_first_run_flow.py`
+
+31. Create `tests/test_first_run_flow.py`; this file uses the function `build_client(store, error=None)` returning BOTH the client and the fake `repo`, and the function `send(client, text)` so that each chat turn calls only `POST /api/chat` with exactly the two fields `message` and `session_id`. This function imports the MODULE `create_app` under the name `create_app_module` so that `STATIC_DIR` can be `monkeypatch`ed, and at the same time imports the FUNCTION `create_app` to build the application.
+
+```python
+from src.chatbot.config.settings import Settings
+from src.chatbot.domain.errors import UpstreamError
+from src.chatbot.interface import create_app as create_app_module
+from src.chatbot.interface.create_app import create_app
+from tests.fakes.fake_api_key_store import FakeApiKeyStore
+from tests.fakes.fake_chat_model import FakeChatModel
+from tests.fakes.fake_memory_repository import FakeMemoryRepository
+
+KEY = "TEST_KEY_" + "x" * 20
+SID = "luong-dau-tien"
+ANSWER = "Xin chào, mình là Lan."
+SETTINGS = {"openai_api_key": "", "openai_model": "gpt-4o-mini", "openai_temperature": 0.3, "openai_timeout": 30, "host": "127.0.0.1", "port": 2610, "memory_file": "memory.json", "max_messages": 5, "system_prompt_file": "system-prompt.txt"}
+
+def build_client(store, error=None):
+    repo = FakeMemoryRepository()
+    model = FakeChatModel(reply_text=ANSWER, error=error)
+    deps = {"settings": Settings(**SETTINGS), "repo": repo, "model": model, "store": store, "system_prompt_loader": lambda path: "Bạn là trợ lý."}
+    app = create_app(deps)
+    app.config.update(TESTING=True, PROPAGATE_EXCEPTIONS=False)
+    return app.test_client(), repo
+
+def send(client, text):
+    return client.post("/api/chat", json={"message": text, "session_id": SID})
+
+def test_first_run_flow_full_seven_steps():
+    client, repo = build_client(FakeApiKeyStore(key=""))
+    assert client.get("/api/setup/status").get_json() == {"configured": False}
+    assert send(client, "Chào").status_code == 409
+    assert client.post("/api/setup", json={"api_key": KEY}).get_json() == {"ok": True}
+    assert client.get("/api/setup/status").get_json() == {"configured": True}
+    assert send(client, "Chào").get_json()["reply"] == ANSWER
+    assert [m.content for m in repo.get(SID)] == ["Chào", ANSWER]
+
+def test_root_and_health_answer_before_any_key(tmp_path, monkeypatch):
+    page = tmp_path / "index.html"
+    page.write_text("<!doctype html><title>chatbot</title>", encoding="utf-8")
+    monkeypatch.setattr(create_app_module, "STATIC_DIR", tmp_path)
+    client, _ = build_client(FakeApiKeyStore(key=""))
+    assert client.get("/").status_code == 200
+    assert client.get("/api/health").get_json() == {"ok": True}
+
+def test_key_survives_new_app_instance():
+    store = FakeApiKeyStore(key="")
+    first, _ = build_client(store)
+    assert first.post("/api/setup", json={"api_key": KEY}).get_json() == {"ok": True}
+    second, _ = build_client(store)
+    assert second.get("/api/setup/status").get_json() == {"configured": True}
+    assert send(second, "Chào").status_code == 200
+
+def test_model_error_does_not_store_history():
+    client, repo = build_client(FakeApiKeyStore(key=KEY), error=UpstreamError(503, "quá tải"))
+    assert send(client, "Chào").status_code == 503
+    assert repo.get(SID) == []
+
+def test_two_turns_same_session_keep_all_messages():
+    client, repo = build_client(FakeApiKeyStore(key=KEY))
+    for text in ("Câu một", "Câu hai"):
+        assert send(client, text).status_code == 200
+    assert [m.content for m in repo.get(SID)] == ["Câu một", ANSWER, "Câu hai", ANSWER]
+
+def test_vietnamese_and_script_tag_are_plain_text():
+    client, repo = build_client(FakeApiKeyStore(key=KEY))
+    text = "Xin chào <script>alert(1)</script> 😀"
+    assert send(client, text).status_code == 200
+    assert repo.get(SID)[0].content == text
+    assert client.get("/api/setup/status").get_json() == {"configured": True}
+
+def test_reset_clears_history_and_accepts_new_session():
+    client, repo = build_client(FakeApiKeyStore(key=KEY))
+    assert send(client, "Chào").status_code == 200
+    assert client.post("/api/reset", json={"session_id": SID}).get_json() == {"ok": True}
+    assert repo.get(SID) == []
+    assert client.post("/api/reset", json={"session_id": "khong-co-luu"}).get_json() == {"ok": True}
+    bad = client.post("/api/reset", json={"session_id": "sai"})
+    assert bad.status_code == 400
+    assert bad.get_json()["error"] == "invalid_session"
+```
+
+32. Check: `py -m pytest tests/test_first_run_flow.py -q` must be green right away on the same code built in round 2 and round 4; if it is red then that is a production code error, NOT a reason to loosen assertions.
+33. Cross-check against the real server per `B1`: run `py run.py` in a separate window, open `http://127.0.0.1:2610`, the key dialog must appear first, paste a key then click Lưu, the chat frame must be able to answer without a restart. With a well-formed test key, `POST /api/setup` returns 200 and the `.env` file has exactly one line `OPENAI_API_KEY=`; when the test key is rejected the first chat turn returns 401 `api_key_invalid` and the page reopens the dialog.
+34. Verify with PowerShell for the real process, one command per line, using NO other command:
+
+```powershell
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:2610/api/health
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:2610/api/setup/status
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:2610/api/setup -ContentType 'application/json' -Body '{"api_key":"TEST_KEY_xxxxxxxxxxxxxxxxxxxx"}'
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:2610/api/chat -ContentType 'application/json' -Body '{"message":"Tên em là Lan","session_id":"luong-dau-tien"}'
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:2610/api/reset -ContentType 'application/json' -Body '{"session_id":"luong-dau-tien"}'
+```
+
+35. Final check: `py -m pytest -q` fully green; the line-count command in step 28 prints no file name; the mapping table in step 16 has no empty cell left; every error in `3d` has a corresponding row in `ERR` or `KILL`.
+
+## 3d. Decision table
+
+**Table D1 - Routing, status codes and response bodies**
+
+| Entry condition | Path | Exit result | Error code |
+|---|---|---|---|
+| No error | `GET /api/health` | `{"ok": true}` | |
+| `static/index.html` exists | `GET /` | the page HTML | |
+| `static/index.html` is missing | `GET /` | error JSON | 404 `not_found` |
+| `store.is_configured()` is wrong | `GET /api/setup/status` | `{"configured": false}` | |
+| `store.is_configured()` is right | `GET /api/setup/status` | `{"configured": true}` | |
+| `mimetype` differs from `application/json` | `POST` to every `/api/*` | the body is not read, the lower layer is not touched | 415 `unsupported_media_type` |
+| Broken body or not a JSON object | `POST` to every `/api/*` | the lower layer is not touched | 400 `bad_request` |
+| Body over 16 KB | `POST` to every `/api/*` | the body is not read | 413 `payload_too_large` |
+| `remote_addr` belongs to `{"127.0.0.1", "::1"}` | `POST /api/setup` | `{"ok": true}` | |
+| `remote_addr` does not belong to the set above | `POST /api/setup` | `.env` unchanged | 403 `forbidden` |
+| `api_key` malformed | `POST /api/setup` | `.env` unchanged | 400 `invalid_api_key` |
+| Key missing the `api_key` field | `POST /api/setup` | `.env` unchanged | 400 `invalid_api_key` |
+| Writing `.env` is denied permission | `POST /api/setup` | the old file stays intact | 500 `save_failed` |
+| Success | `POST /api/chat` | `{"reply": str, "model": str, "ms": int}` | |
+| Body contains a `history` field | `POST /api/chat` | the field is ignored, only `repo` is read | |
+| `message` empty or over 4000 characters | `POST /api/chat` | memory unchanged | 400 `invalid_message` |
+| `session_id` malformed | `POST /api/chat` | memory unchanged | 400 `invalid_session` |
+| No key yet | `POST /api/chat` | memory not read, model not called | 409 `api_key_missing` |
+| `UpstreamError` code 401 | `POST /api/chat` | memory unchanged | 401 `api_key_invalid` |
+| `UpstreamError` code 502 | `POST /api/chat` | memory unchanged | 502 `upstream_unavailable` |
+| `UpstreamError` code 503 | `POST /api/chat` | memory unchanged | 503 `upstream_busy` |
+| `UpstreamError` code 504 | `POST /api/chat` | memory unchanged | 504 `upstream_timeout` |
+| `reply` contains only whitespace | `POST /api/chat` | no empty message returned to the page | 502 `empty_reply` |
+| `UpstreamError` with another code | `POST /api/chat` | memory unchanged | 500 `internal_error` |
+| Session has history | `POST /api/reset` | `{"ok": true}`, history deleted | |
+| Session does not exist | `POST /api/reset` | `{"ok": true}` | |
+| Unknown path | any `GET` | error JSON | 404 `not_found` |
+| Method does not match | `GET /api/chat` | error JSON | 405 `method_not_allowed` |
+| Unanticipated error | any | error JSON, no error trace | 500 `internal_error` |
+
+**Table D2 - Lower-layer exceptions mapped to return codes**
+
+| Exception thrown | Where it arises | Return code | Vietnamese message |
+|---|---|---|---|
+| `SettingsError` | `load_settings` in `run.py` | no HTTP, exits with code 1 | names the key and the accepted value |
+| `InvalidApiKey` | `configure_api_key` | 400 `invalid_api_key` | Khóa API không đúng hình thức |
+| `OSError` while writing `.env` | `EnvApiKeyStore.save` | 500 `save_failed` | Không ghi được tệp .env trên đĩa |
+| `InvalidSession` | `send_message`, `reset_conversation` | 400 `invalid_session` | Mã phiên không hợp lệ |
+| `InvalidMessage` | `send_message` | 400 `invalid_message` | Tin nhắn rỗng hoặc quá 4000 ký tự |
+| `ApiKeyMissing` | `send_message` | 409 `api_key_missing` | Chưa nhập khóa API |
+| `UpstreamError(401)` | `map_openai_error` | 401 `api_key_invalid` | Khóa API không đúng, nhập lại |
+| `UpstreamError(502)` | `map_openai_error` | 502 `upstream_unavailable` | Không kết nối được dịch vụ mô hình |
+| `UpstreamError(503)` | `map_openai_error` | 503 `upstream_busy` | Hệ thống đang quá tải, thử lại sau |
+| `UpstreamError(504)` | `map_openai_error` | 504 `upstream_timeout` | Mô hình trả lời quá lâu |
+| `UnsupportedMediaType` | `require_json` | 415 `unsupported_media_type` | Phải gửi Content-Type: application/json |
+| `MalformedJson` | `require_json` | 400 `bad_request` | Thân yêu cầu không phải đối tượng JSON |
+| `ForbiddenAddress` | `require_localhost` | 403 `forbidden` | Chỉ cho phép truy cập từ máy cục bộ |
+| Unanticipated error | any layer | 500 `internal_error` | Có lỗi không mong đợi |
+| `OSError` when the port is busy | `app.run` in `run.py` | no HTTP, exits with code 1 | Cổng đang bận, hãy đổi PORT trong .env |
+
+**Table D3 - Edge cases of `B10` and who handles them**
+
+| Edge case | Responsible layer | Observable result from `interface` |
+|---|---|---|
+| Empty key at startup | `run.py` | `/api/health` 200, `/api/setup/status` returns `false` |
+| Malformed key | `validate_api_key` | 400 `invalid_api_key`, `.env` unchanged |
+| Well-formed key but rejected on the first chat turn | `infrastructure` then `chat_route` | 401 `api_key_invalid`, the page reopens the dialog |
+| Writing `.env` is denied permission | `setup_route` | 500 `save_failed`, the old file stays intact |
+| `.env` has a CRLF end-of-line character | `EnvApiKeyStore` | `POST /api/setup` 200, `status` switches to `true` |
+| `.env` has two identical `OPENAI_API_KEY` lines | `EnvApiKeyStore` | `status` is still `true`, the value taken from the last line |
+| Broken body, missing `Content-Type`, body over 16 KB | `require_json`, `create_app` | 400, 415, 413 are all two-key JSON |
+| The directory containing `memory.json` does not exist yet | `JsonMemoryRepository` | `POST /api/chat` 200, no file write error |
+| `memory.json` is corrupt | `JsonMemoryRepository` | `POST /api/chat` 200, the corrupt file is renamed |
+| Two concurrent `/api/chat` requests in the same session | the write lock of `JsonMemoryRepository` | both writes keep all four messages, no message lost |
+| Two browser tabs in the same session | `interface` keeps no per-tab state | shared history, no 500 |
+| Network loss midway | the js file of `P7` | the page reports that the server cannot be reached, the server does not hang |
+| The model is too slow | `LangChainChatModel` per `OPENAI_TIMEOUT` | 504 `upstream_timeout` |
+| The model returns an empty string | `chat_route` | 502 `empty_reply` |
+| Message contains Vietnamese with diacritics and an emoji | the JSON mechanism of the web library | `reply` and the stored content keep their diacritics |
+| Message contains HTML special characters | `interface` builds no HTML | the text is returned verbatim in JSON, not executed |
+
+**Table D4 - Application entry state across the lifecycle**
+
+| State | Source of truth | `GET /api/setup/status` | `POST /api/chat` | Page behaviour |
+|---|---|---|---|---|
+| First `py run.py`, `.env` has no key yet | `EnvApiKeyStore.get()` empty | `{"configured": false}` | 409 | shows the key dialog first |
+| The user pastes the key then clicks Lưu | `EnvApiKeyStore.save` writes the file then updates the process | `{"configured": true}` | 200 | closes the dialog, opens the chat frame, no restart |
+| Next `py run.py` | reads the `.env` file again | `{"configured": true}` | 200 | goes straight to the chat frame |
+| The key is rejected by the model service | `map_openai_error` | `{"configured": true}` | 401 | reopens the dialog with a wrong-key message |
+| `memory.json` is corrupt or missing | `JsonMemoryRepository` | unchanged | 200 | no error, the session starts empty |
+
+## ERR:
+
+**ERR.1 - 415 appears although the test sends well-formed JSON.** Symptom: `test_protocol_errors_return_json` is red on all three paths. Cause: the test uses `data=` without a content type, or `require_json` compares the full header string instead of `request.mimetype`. Fix: in the test use `json=` when you want 200 and `data=` when you want 415; in `require_json` compare only `request.mimetype`. Related files: `src/chatbot/interface/require_json.py`, `tests/test_routes.py`.
+
+**ERR.2 - 413 does not trigger.** Symptom: a 20000-character body returns 400 `invalid_message` instead of 413. Cause: `MAX_CONTENT_LENGTH` is set after the application is built or mistakenly placed in `deps`. Fix: set `app.config["MAX_CONTENT_LENGTH"] = 16 * 1024` immediately after `Flask(...)` and register `errorhandler(413)`. Related files: `src/chatbot/interface/create_app.py`, `src/chatbot/interface/json_error.py`.
+
+**ERR.3 - 403 does not fire when the test simulates an unknown address.** Symptom: the key is still saved when the address is `10.0.0.7`. Cause: `REMOTE_ADDR` is put into the application config instead of being passed as `environ_base` to `test_client`. Fix: use `client().post(..., environ_base=REMOTE)` with `REMOTE = {"REMOTE_ADDR": "10.0.0.7"}`. Related files: `tests/test_routes.py`, `src/chatbot/interface/require_localhost.py`.
+
+**ERR.4 - The key leaks through the response.** Symptom: the assertion `KEY not in str(body)` is red. Cause: the route returns `store.get()` or wraps the exception message together with the value. Fix: return only `{"ok": true}`; every hand-written error message carries no value. Related files: `src/chatbot/interface/routes/setup_route.py`.
+
+**ERR.5 - The key leaks through the log.** Symptom: the application log contains the key string. Cause: `app.logger.error("%s", exc)` prints the whole exception from the library. Fix: log only `type(error).__name__`; the lower layer uses `mask_secret` per `B6`. Related files: `src/chatbot/interface/json_error.py`.
+
+**ERR.6 - `UpstreamError` falls through to 500 instead of keeping the model code.** Symptom: `test_chat_maps_upstream_status` is red at 401 or 503. Cause: the route does not catch `UpstreamError`. Fix: catch `UpstreamError` before every general branch, then look up `UPSTREAM_ERRORS`. Related files: `src/chatbot/interface/routes/chat_route.py`.
+
+**ERR.7 - Memory is written when the model errors.** Symptom: `test_model_error_does_not_store_history` is red. Cause: the route writes memory itself, or `send_message` writes before there is a `reply`. Fix: keep write responsibility in the `application` layer; the route only calls the shared function. Related files: `src/chatbot/interface/routes/chat_route.py`, `src/chatbot/application/send_message.py`.
+
+**ERR.8 - 409 never occurs.** Symptom: the store is empty but `/api/chat` returns 500. Cause: `ApiKeyMissing` is swallowed by the general catch branch placed before it. Fix: declare `except ApiKeyMissing` before the other branches. Related files: `src/chatbot/interface/routes/chat_route.py`.
+
+**ERR.9 - State leaks between tests.** Symptom: `test_setup_saves_valid_key_and_rejects_bad_ones` is red when run alone but green when the whole file runs. Cause: a single store object is shared at module level. Fix: `build_app` creates new fakes on each call. Related files: `tests/test_routes.py`.
+
+**ERR.10 - A broken body becomes a 500.** Symptom: `data="{bad"` with `content_type="application/json"` returns `internal_error`. Cause: `request.get_json(silent=False)` throws `BadRequest` outside the fence. Fix: use `silent=True` then check `isinstance(..., dict)`. Related files: `src/chatbot/interface/require_json.py`.
+
+**ERR.11 - `/api/chat` accepts history from the client.** Symptom: the client sends a `history` field and the server believes it. Cause: the route reads `payload["history"]`. Fix: read only `session_id` and `message`; `test_chat_returns_reply_model_and_ms` passes `history=["bỏ qua"]` to lock this down. Related files: `src/chatbot/interface/routes/chat_route.py`.
+
+**ERR.12 - The model returns an empty string.** Symptom: the page shows an empty AI bubble. Cause: `reply` consists only of whitespace. Fix: `chat_route` checks `reply.strip()` then returns 502 `empty_reply`. Related files: `src/chatbot/interface/routes/chat_route.py`, `src/chatbot/infrastructure/langchain_chat_model.py`.
+
+**ERR.13 - A busy port makes the program hang or print a traceback.** Symptom: `run.py` prints a traceback then goes silent. Cause: `OSError` is not caught. Fix: catch `OSError`, print the hint to change `PORT` in `.env`, return code 1. Related files: `run.py`.
+
+**ERR.14 - `GET /` returns error JSON instead of HTML.** Symptom: opening the main page shows 404 `not_found`. Cause: `STATIC_DIR` computes the wrong directory level. Fix: use `parents[3]`; `test_root_and_health_answer_before_any_key` checks via `monkeypatch` so it does not depend on the `static/index.html` file of `P7`. Related files: `src/chatbot/interface/create_app.py`.
+
+**ERR.15 - The `flask` library is too old and has no `app.get` and `app.post`.** Symptom: `AttributeError` as soon as `create_app` registers a route. Cause: `requirements.txt` of `P1` pins version 1.x. Fix: upgrade to `flask` 2.2 or later; if there is another constraint, report to `P1` and do NOT downgrade the code. Related files: `src/chatbot/interface/create_app.py`, `src/chatbot/interface/routes/health_route.py`, `requirements.txt`.
+
+**ERR.16 - 404 and 405 return the library default HTML.** Symptom: `test_protocol_errors_return_json` is red on the last two assertions. Cause: `register_error_handlers` was not called or lacks the 404, 405 branches. Fix: register 400, 404, 405, 413 and `Exception` in one call. Related files: `src/chatbot/interface/json_error.py`.
+
+**ERR.17 - The 500 error cannot be checked because the exception is thrown inside the test.** Symptom: `test_chat_error_codes` reports an exception error instead of receiving a 500. Cause: `TESTING=True` turns exception-throwing mode on. Fix: set `app.config.update(TESTING=True, PROPAGATE_EXCEPTIONS=False)` in the application-building function of both test files. Related files: `tests/test_routes.py`, `tests/test_first_run_flow.py`.
+
+**ERR.18 - The 500 leaks an error trace.** Symptom: the string `Traceback` appears in the response body. Cause: the route returns the raw error object instead of returning `error_response`. Fix: every error branch returns through `error_response`; the test asserts that the string is absent from the response body. Related files: `src/chatbot/interface/routes/chat_route.py`, `src/chatbot/interface/routes/setup_route.py`, `src/chatbot/interface/routes/reset_route.py`.
+
+**ERR.19 - A permission-denied write of `.env` returns 400 instead of 500.** Symptom: `save_failed` never appears. Cause: catching `InvalidApiKey` too broadly also swallows the disk error. Fix: add a separate `except OSError` for the `configure_api_key` call. Related files: `src/chatbot/interface/routes/setup_route.py`.
+
+**ERR.20 - `.env` is half-written.** Symptom: `POST /api/setup` returns 200 but `status` is still `false`. Cause: `EnvApiKeyStore.save` writes directly instead of going through `atomic_write_text`. Fix: per `B6`, build the whole content and then write atomically. Related files: `src/chatbot/interface/routes/setup_route.py`, `src/chatbot/infrastructure/env_api_key_store.py`.
+
+**ERR.21 - Two concurrent `/api/chat` requests lose messages.** Symptom: the two writes leave only three messages. Cause: read then write outside the lock. Fix: the lock of `JsonMemoryRepository` must cover both the read and the write. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.22 - A corrupt `memory.json` causes a 500.** Symptom: the first chat turn returns `internal_error`. Cause: `repo.get` throws the JSON error outside. Fix: rename the corrupt file and start empty, do not crash. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.23 - A not-yet-existing directory containing `memory.json` causes a 500.** Symptom: `POST /api/chat` returns 500 on the first run on a fresh machine. Cause: `atomic_write_text` does not create the parent directory. Fix: create the parent directory before writing, per `B6`. Related files: `src/chatbot/infrastructure/atomic_write_text.py`, `run.py`.
+
+**ERR.24 - Vietnamese loses its diacritics in the response.** Symptom: error messages appear without diacritics. Cause: source strings in the file lost their diacritics while being composed. Fix: every hand-written message in `interface` must carry full diacritics; the character escape form in JSON is still valid JSON and the browser restores the diacritics by itself. Related files: `src/chatbot/interface/json_error.py`, `src/chatbot/interface/routes/chat_route.py`.
+
+**ERR.25 - A body over 16 KB hangs the process.** Symptom: sending a very large body makes the server silent for several seconds before returning 413. Cause: `MAX_CONTENT_LENGTH` is only checked when the body is fully read, while `require_json` reads the body before the check. Fix: set `MAX_CONTENT_LENGTH` immediately after the application is built so that the library blocks early; do not write your own body-reading loop in the route. Related files: `src/chatbot/interface/create_app.py`, `src/chatbot/interface/require_json.py`.
+
+**ERR.26 - Skipping a required field lets `send_message` receive an empty string.** Symptom: the body `{}` returns 400 `invalid_session` instead of `invalid_message`, or the reverse, which makes the message misleading. Cause: the route uses `payload["message"]` to deliberately throw its own error instead of letting the `application` layer check. Fix: always use `payload.get("message", "")` and `payload.get("session_id", "")`, and let `validate_session_id` and `validate_message` decide the return code in the order fixed in `B5`. Related files: `src/chatbot/interface/routes/chat_route.py`, `src/chatbot/interface/routes/reset_route.py`.
+
+**ERR.27 - Two applications share one memory file without a lock.** Symptom: messages are lost when two tabs send at the same time. Cause: the lock only protects within one process. Fix: `interface` does not add a file lock by itself; the responsibility lies in `JsonMemoryRepository`; if `P5` already locks correctly then `P6` does NOT add anything more. Related files: `src/chatbot/interface/create_app.py`, `src/chatbot/infrastructure/json_memory_repository.py`.
+
+## KILL:
+
+**KILL.1 - The API key appears in any response or log.** Stop condition: `py -m pytest -q` or reading the log file of the process shows the key string. Report: the route name, the file name, and the assertion that `P6` stops immediately because `POST.3` is violated. Do NOT fix it by masking with `mask_secret` in the response body; the value must be removed from the response entirely.
+
+**KILL.2 - The error response body contains an error trace.** Stop condition: the body contains `Traceback`, an internal file name or the string `File "`. Report: assert that every error branch must go through `error_response`, and that `debug=False` is mandatory in `run.py`.
+
+**KILL.3 - `domain` is touched.** Stop condition: `P6` needs to modify a file in `src/chatbot/domain/`. Report: the file name and the wrong signature, then move the fix back to `P3` or `P4`. `P6` never edits a lower layer to make tests green.
+
+**KILL.4 - A file exceeds 100 lines and cannot be split while still obeying the one-function-per-file rule.** Stop condition: the line-count command prints the name of a `P6` file. Report: the file name, the number of lines, and the part that must be shortened; raising the 100-line threshold is NOT allowed.
+
+**KILL.5 - Adding a file outside the `B2` directory tree.** Stop condition: the need arises to create an extra file in `tests/`, in `interface/routes/`, or a new configuration file. Report: the intended path and the reason; only files already listed in `B2` may be created.
+
+**KILL.6 - Modifying files of another prompt.** Stop condition: `P6` needs to modify `requirements.txt`, `pytest.ini`, `.env.example`, a file in `config/`, `infrastructure/`, or the js file of `P7`. Report: the file, the line, and which prompt the fix belongs to.
+
+**KILL.7 - Running the server in the `opencode` shell or hanging the process.** Stop condition: there is a `py run.py` command run directly in the work session, or a command waiting for an HTTP result. Report: switch to `Start-Process powershell` and `Start-Sleep -Seconds 3` per `B11`, then use `Invoke-RestMethod` to check.
+
+**KILL.8 - Hardcoding the model service address or removing `OPENAI_BASE_URL`.** Stop condition: `P6` adds an address variable, overwrites this environment variable, or builds `ChatOpenAI` outside the `infrastructure` layer. Report: the file and the line; building the client is the responsibility of `P5`.
+
+**KILL.9 - Using the same `require_json()` for `GET`.** Stop condition: adding `require_json()` to `health_route` or `setup_status_route`. Report: those two routes have no body and need no content type; only the three `POST` `endpoint`s use this fence.
+
+**KILL.10 - Being unable to determine why a test is red after one round of red.** Stop condition: running the GREEN round while the error message does not point at the file or line to fix. Report: paste the error message verbatim, together with the command that was run, then stop; guessing and editing at random is NOT allowed.
+
+**KILL.11 - Using the wrong tool in a check command.** Stop condition: using any command other than `py`, `pytest` via `py -m`, `Start-Process`, `Start-Sleep`, `Invoke-RestMethod`, `Get-ChildItem`, `Get-Content`, `Measure-Object`. Report: the wrong statement and the correct PowerShell replacement.
+
+# 4. Format:
+
+PRE- Already exists from P1 to P5: `pytest.ini` declares `pythonpath = . src`, `testpaths = tests`; the files `tests/fakes/fake_api_key_store.py`, `tests/fakes/fake_chat_model.py`, `tests/fakes/fake_memory_repository.py`; every layer `config`, `domain`, `application`, `infrastructure`.
+- `Settings` is a frozen dataclass; read `settings.openai_model` and `settings.max_messages` when building a response.
+- The fakes must expose exactly the following public members, because P6 calls them directly:
+  - `FakeApiKeyStore(initial: str)`, providing `.is_configured()`, `.get()`, `.save(key)`, with the `.saved` attribute being the list of saved keys.
+  - `FakeChatModel(replies: list[str], errors: list[Exception])`, providing `.reply(system_prompt, history, user_text)`, with the `.calls` attribute being a list of dicts, each dict holding the keys `"history"`, `"user_text"`, `"system_prompt"`. If `errors` is non-empty then `reply` raises the first remaining element and removes it from the list.
+  - `FakeMemoryRepository()`, providing `.get`, `.append`, `.reset`, and storing every message in an internal dict for assertions.
+
+POST
+- Create exactly the 12 files below, each file under 100 lines.
+- `py -m pytest -q` runs green, no failing test remains, no test is skipped because of a missing file.
+
+INV
+- INV1: every error response has exactly the two keys `{"error", "message"}`; a third key never appears.
+- INV2: `create_app` registers exactly 5 blueprints plus the route `/`; `MAX_CONTENT_LENGTH = 16 * 1024`.
+- INV3: `deps` holds `settings`, `repo`, `model`, `store`, `system_prompt_loader`, `static_dir`; `system_prompt_loader` is a zero-argument FUNCTION returning `str`, and the route calls it on every chat turn so that editing `system-prompt.txt` needs no restart.
+- INV4: `require_localhost` applies only to `/api/setup`; `require_json` applies to `/api/setup`, `/api/chat`, `/api/reset`.
+- INV5: `require_json` and `require_localhost` return `None` when they pass and return the `(response, status)` pair when they fail; the route returns that pair unchanged.
+- INV6: `/api/chat` does not read the `history` field from the request body; it reads only `message` and `session_id`.
+- INV7: Vietnamese strings in every error response and in every `print` message of `run.py` carry full diacritics.
+- INV8: `json_error.EMPTY_REPLY_MESSAGE` is the single constant; `infrastructure/langchain_chat_model.py` must raise `UpstreamError(502, EMPTY_REPLY_MESSAGE)` when the content is empty, so the `empty_reply` code matches the test.
+
+ERR
+| error | returned code | raised where |
+|---|---|---|
+| `InvalidApiKey` | 400 `invalid_api_key` | `validate_api_key` |
+| `InvalidMessage` | 400 `invalid_message` | `validate_message` |
+| `InvalidSession` | 400 `invalid_session` | `validate_session_id` |
+| `ApiKeyMissing` | 409 `api_key_missing` | `send_message` |
+| `UpstreamError(401)` | 401 `invalid_api_key` | `map_openai_error` |
+| `UpstreamError(502)` empty | 502 `empty_reply` | `langchain_chat_model` |
+| `UpstreamError(502)` other | 502 `upstream_unreachable` | `map_openai_error` |
+| `UpstreamError(503)` | 503 `rate_limited` | `map_openai_error` |
+| `UpstreamError(504)` | 504 `upstream_timeout` | `map_openai_error` |
+| `OSError` while saving the key | 500 `save_failed` | `setup_route` |
+| missing `Content-Type` | 415 `unsupported_media_type` | `require_json` |
+| body is not a JSON object | 400 `invalid_json` | `require_json` |
+| body over 16 KB | 413 `payload_too_large` | `MAX_CONTENT_LENGTH` |
+| address is not localhost | 403 `forbidden` | `require_localhost` |
+| unexpected error | 500 `internal_error` | `register_error_handlers` |
+
+KILL
+- KILL1: any in-scope file reaches 100 lines or more ⇒ stop, split the function.
+- KILL2: `Traceback` appears in an HTTP response ⇒ stop immediately.
+- KILL3: an error response carries a key other than `error` and `message` ⇒ stop immediately.
+- KILL4: an API key value appears in any response, log, or `memory.json` ⇒ stop immediately, remove it from history and write it again.
+- KILL5: `innerHTML` is used in any `.js` file ⇒ stop immediately.
+
+Result file table:
+
+| File | Role | Max lines |
+|---|---|---|
+| `src/chatbot/interface/json_error.py` | `error_payload`, `resolve_chatbot_error`, `register_error_handlers`, constants `EMPTY_REPLY_*` | 90 |
+| `src/chatbot/interface/require_json.py` | JSON body gate | 20 |
+| `src/chatbot/interface/require_localhost.py` | foreign-address gate | 15 |
+| `src/chatbot/interface/routes/health_route.py` | `GET /api/health` | 12 |
+| `src/chatbot/interface/routes/setup_status_route.py` | `GET /api/setup/status` | 14 |
+| `src/chatbot/interface/routes/setup_route.py` | `POST /api/setup` | 30 |
+| `src/chatbot/interface/routes/chat_route.py` | `POST /api/chat` | 32 |
+| `src/chatbot/interface/routes/reset_route.py` | `POST /api/reset` | 20 |
+| `src/chatbot/interface/create_app.py` | build app, load blueprints, route `/` | 30 |
+| `run.py` | load configuration, build dependencies, print URL, handle busy port | 60 |
+| `tests/test_routes.py` | all routes, all status codes | 99 |
+| `tests/test_first_run_flow.py` | 7-step first-run flow, key survives a reset | 90 |
+
+The final report format of opencode, printed at the end of the answer, in exactly this order:
+
+1. File table:
+
+| File | Line count | Complies with the under-100-lines rule |
+|---|---|---|
+
+2. Check table:
+
+| Command | Expected result |
+|---|---|
+
+3. RED turn log block: paste verbatim the `py -m pytest -q` part while it still fails, plus a short explanatory line in Vietnamese with diacritics.
+4. GREEN turn log block: paste verbatim the `py -m pytest -q` part after the fix, plus a green confirmation line.
+5. Case coverage table: each row is one case from ERR and B10, and the "verifying file" column names exactly one test function.
+6. Open questions, or the line `KHÔNG CÒN CA NÀO ĐƯỢC BỎ QUA`.
+
+# 5. Example:
+
+```python
+"""Đổi mọi lỗi thành JSON thống nhất, không lộ stack trace."""
+
+from flask import jsonify
+from werkzeug.exceptions import HTTPException
+
+from src.chatbot.domain.errors import (
+    ApiKeyMissing,
+    ChatbotError,
+    InvalidApiKey,
+    InvalidMessage,
+    InvalidSession,
+    UpstreamError,
+)
+
+EMPTY_REPLY_STATUS = 502
+EMPTY_REPLY_CODE = "empty_reply"
+EMPTY_REPLY_MESSAGE = "Mô hình trả về nội dung rỗng."
+
+RULES = (
+    (InvalidSession, 400, "invalid_session", "Mã phiên không hợp lệ."),
+    (InvalidMessage, 400, "invalid_message", "Nội dung tin không hợp lệ."),
+    (InvalidApiKey, 400, "invalid_api_key", "Khóa API không đúng hình thức."),
+    (ApiKeyMissing, 409, "api_key_missing", "Chưa nhập khóa API."),
+)
+
+UPSTREAM_CODES = {
+    401: "invalid_api_key",
+    502: "upstream_unreachable",
+    503: "rate_limited",
+    504: "upstream_timeout",
+}
+
+
+def error_payload(code, message):
+    """Khoả khóa đúng hai trường của mọi phản hồi lỗi."""
+    return {"error": code, "message": message}
+
+
+def resolve_chatbot_error(exc):
+    """Ánh xạ lỗi tầng domain sang cặp (status, code, message)."""
+    if isinstance(exc, UpstreamError):
+        if exc.message == EMPTY_REPLY_MESSAGE:
+            return EMPTY_REPLY_STATUS, EMPTY_REPLY_CODE, exc.message
+        code = UPSTREAM_CODES.get(exc.status, "upstream_error")
+        return exc.status, code, exc.message
+    for cls, status, code, message in RULES:
+        if isinstance(exc, cls):
+            return status, code, message
+    return 500, "internal_error", "Có lỗi không mong đợi."
+
+
+def register_error_handlers(app):
+    """Gắn bốn trình xử lý lỗi vào ứng dụng Flask."""
+
+    @app.errorhandler(ChatbotError)
+    def handle_chatbot_error(exc):
+        status, code, message = resolve_chatbot_error(exc)
+        return jsonify(error_payload(code, message)), status
+
+    @app.errorhandler(413)
+    def handle_too_large(_exc):
+        return jsonify(error_payload("payload_too_large", "Thân yêu cầu vượt quá 16 KB.")), 413
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(exc):
+        code = exc.name.lower().replace(" ", "_")
+        return jsonify(error_payload(code, exc.description)), exc.code
+
+    @app.errorhandler(Exception)
+    def handle_unexpected(exc):
+        app.logger.error("loi_khong_mong_doi: %s", type(exc).__name__)
+        return jsonify(error_payload("internal_error", "Có lỗi không mong đợi.")), 500
+```
+
+```python
+"""Cổng chặn: thân yêu cầu phải là JSON đúng hình thức."""
+
+from flask import jsonify, request
+
+from src.chatbot.interface.json_error import error_payload
+
+
+def require_json():
+    """Trả None khi đạt, trả (response, status) khi không đạt."""
+    if request.mimetype != "application/json":
+        body = error_payload("unsupported_media_type", "Thiếu Content-Type: application/json.")
+        return jsonify(body), 415
+    if not isinstance(request.get_json(silent=True), dict):
+        body = error_payload("invalid_json", "Thân yêu cầu phải là đối tượng JSON.")
+        return jsonify(body), 400
+    return None
+```
+
+```python
+"""Cổng chặn: chỉ nhận yêu cầu từ máy cục bộ."""
+
+from flask import jsonify, request
+
+from src.chatbot.interface.json_error import error_payload
+
+LOCAL_ADDRESSES = {"127.0.0.1", "::1"}
+
+
+def require_localhost():
+    """Trả None khi địa chỉ nguồn hợp lệ, ngược lại trả (response, 403)."""
+    if request.remote_addr not in LOCAL_ADDRESSES:
+        body = error_payload("forbidden", "Chỉ chấp nhận yêu cầu từ máy cục bộ.")
+        return jsonify(body), 403
+    return None
+```
+
+```python
+"""GET /api/health: báo sống."""
+
+from flask import Blueprint, jsonify
+
+health_bp = Blueprint("health", __name__)
+
+
+@health_bp.get("/api/health")
+def health():
+    """Trả đúng đối tượng ok."""
+    return jsonify({"ok": True})
+```
+
+```python
+"""GET /api/setup/status: báo khóa API đã nhập chưa."""
+
+from flask import Blueprint, current_app, jsonify
+
+from src.chatbot.application.get_setup_status import get_setup_status
+
+setup_status_bp = Blueprint("setup_status", __name__)
+
+
+@setup_status_bp.get("/api/setup/status")
+def setup_status():
+    """Đọc trạng thái từ cửa hàng khóa, không đọc tệp trực tiếp."""
+    store = current_app.config["deps"]["store"]
+    return jsonify(get_setup_status(store))
+```
+
+```python
+"""POST /api/setup: nhận khóa API lần đầu, chỉ từ localhost."""
+
+from flask import Blueprint, current_app, jsonify, request
+
+from src.chatbot.application.configure_api_key import configure_api_key
+from src.chatbot.interface.json_error import error_payload
+from src.chatbot.interface.require_json import require_json
+from src.chatbot.interface.require_localhost import require_localhost
+
+setup_bp = Blueprint("setup", __name__)
+
+
+@setup_bp.post("/api/setup")
+def setup():
+    """Kiểm địa chỉ, kiểm JSON, lưu khóa, không bao giờ trả lại khóa."""
+    denied = require_localhost()
+    if denied is not None:
+        return denied
+    bad_request = require_json()
+    if bad_request is not None:
+        return bad_request
+    api_key = request.get_json(silent=True).get("api_key", "")
+    store = current_app.config["deps"]["store"]
+    try:
+        configure_api_key(store, api_key)
+    except OSError:
+        body = error_payload("save_failed", "Không ghi được tệp .env.")
+        return jsonify(body), 500
+    return jsonify({"ok": True})
+```
+
+```python
+"""POST /api/chat: nhận tin, trả câu trả lời, không nhận lịch sử từ client."""
+
+import time
+
+from flask import Blueprint, current_app, jsonify, request
+
+from src.chatbot.application.send_message import send_message
+from src.chatbot.interface.require_json import require_json
+
+chat_bp = Blueprint("chat", __name__)
+
+
+@chat_bp.post("/api/chat")
+def chat():
+    """Chỉ đọc hai trường message và session_id, bỏ qua trường thừa."""
+    bad_request = require_json()
+    if bad_request is not None:
+        return bad_request
+    deps = current_app.config["deps"]
+    payload = request.get_json(silent=True)
+    started = time.perf_counter()
+    reply = send_message(
+        deps["repo"],
+        deps["model"],
+        deps["store"],
+        deps["system_prompt_loader"](),
+        deps["settings"].max_messages,
+        payload.get("session_id", ""),
+        payload.get("message", ""),
+    )
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    model_name = deps["settings"].openai_model
+    return jsonify({"reply": reply, "model": model_name, "ms": elapsed_ms})
+```
+
+```python
+"""POST /api/reset: xoá lịch sử của một phiên."""
+
+from flask import Blueprint, current_app, jsonify, request
+
+from src.chatbot.application.reset_conversation import reset_conversation
+from src.chatbot.interface.require_json import require_json
+
+reset_bp = Blueprint("reset", __name__)
+
+
+@reset_bp.post("/api/reset")
+def reset():
+    """Xoá phiên đã có hay chưa có đều trả thành công im lặng."""
+    bad_request = require_json()
+    if bad_request is not None:
+        return bad_request
+    deps = current_app.config["deps"]
+    payload = request.get_json(silent=True)
+    reset_conversation(deps["repo"], payload.get("session_id", ""))
+    return jsonify({"ok": True})
+```
+
+```python
+"""Dựng ứng dụng Flask: 5 route, xử lý lỗi gom về JSON."""
+
+from pathlib import Path
+
+from flask import Flask, send_from_directory
+
+from src.chatbot.interface.json_error import register_error_handlers
+from src.chatbot.interface.routes.chat_route import chat_bp
+from src.chatbot.interface.routes.health_route import health_bp
+from src.chatbot.interface.routes.reset_route import reset_bp
+from src.chatbot.interface.routes.setup_route import setup_bp
+from src.chatbot.interface.routes.setup_status_route import setup_status_bp
+
+MAX_CONTENT_LENGTH = 16 * 1024
+INDEX_FILE = "index.html"
+
+
+def resolve_static_dir(deps):
+    """Lấy thư mục static, suy từ MEMORY_FILE khi deps không khai báo."""
+    given = deps.get("static_dir")
+    if given is not None:
+        return Path(given)
+    memory_file = Path(deps["settings"].memory_file)
+    return memory_file.resolve().parent / "static"
+
+
+def create_app(deps) -> Flask:
+    """Khoá chặt cấu hình, nạp blueprint, đăng ký xử lý lỗi."""
+    app = Flask(__name__, static_folder=str(resolve_static_dir(deps)), static_url_path="/static")
+    app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+    app.config["deps"] = deps
+    for blueprint in (health_bp, setup_status_bp, setup_bp, chat_bp, reset_bp):
+        app.register_blueprint(blueprint)
+    register_error_handlers(app)
+
+    @app.get("/")
+    def index():
+        """Phục vụ trang nhập khóa API và khung chat."""
+        return send_from_directory(app.static_folder, INDEX_FILE)
+
+    return app
+```
+
+```python
+"""Điểm khởi chạy: nạp cấu hình, dựng phụ thuộc, in URL, xử lý cổng bận."""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from src.chatbot.config.load_settings import load_settings
+from src.chatbot.config.settings_error import SettingsError
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.infrastructure.json_memory_repository import JsonMemoryRepository
+from src.chatbot.infrastructure.langchain_chat_model import LangChainChatModel
+from src.chatbot.infrastructure.load_system_prompt import load_system_prompt
+from src.chatbot.interface.create_app import create_app
+
+
+def build_deps(settings):
+    """Dựng đúng năm phụ thuộc mà tầng interface cần."""
+    store = EnvApiKeyStore(ROOT / ".env")
+    return {
+        "settings": settings,
+        "store": store,
+        "repo": JsonMemoryRepository(ROOT / settings.memory_file),
+        "model": LangChainChatModel(settings, store),
+        "system_prompt_loader": lambda path: load_system_prompt(ROOT / path),
+        "static_dir": ROOT / "static",
+    }
+
+
+def main():
+    """Trả 0 khi chạy tốt, trả 1 khi cấu hình sai hoặc cổng bận."""
+    try:
+        settings = load_settings(ROOT / ".env")
+    except SettingsError as exc:
+        print(f"Lỗi cấu hình trong tệp .env: {exc}")
+        return 1
+    app = create_app(build_deps(settings))
+    print(f"Chatbot đang chạy tại http://{settings.host}:{settings.port}")
+    try:
+        app.run(host=settings.host, port=settings.port, debug=False)
+    except OSError:
+        print(f"Cổng {settings.port} đang bận. Hãy đổi PORT trong tệp .env rồi chạy lại.")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+```python
+"""Kiểm thử tầng interface: 5 route và mọi mã trạng thái ở bảng B7."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from src.chatbot.domain.errors import UpstreamError
+from src.chatbot.interface.create_app import create_app
+from tests.fakes.fake_api_key_store import FakeApiKeyStore
+from tests.fakes.fake_chat_model import FakeChatModel
+from tests.fakes.fake_memory_repository import FakeMemoryRepository
+
+STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+VALID_KEY = "TEST_KEY_" + "x" * 20
+
+
+class SettingsStub:
+    """Chỉ chứa đúng các trường mà tầng interface đọc."""
+
+    openai_model = "gpt-4o-mini"
+    openai_temperature = 0.3
+    openai_timeout = 30
+    max_messages = 5
+
+
+def build_client(api_key=VALID_KEY, replies=("Xin chào",), errors=()):
+    """Trả về test_client cùng cửa hàng khóa và mô hình giả."""
+    store = FakeApiKeyStore(initial=api_key)
+    model = FakeChatModel(replies=list(replies), errors=list(errors))
+    deps = {
+        "settings": SettingsStub(),
+        "store": store,
+        "repo": FakeMemoryRepository(),
+        "model": model,
+        "system_prompt_loader": lambda: "Bạn là trợ lý học tập.",
+        "static_dir": STATIC_DIR,
+    }
+    app = create_app(deps)
+    app.config["TESTING"] = True
+    return app.test_client(), store, model
+
+
+def send(client, path, body, content_type="application/json", addr=None):
+    """Gửi POST với thân JSON, ép địa chỉ nguồn khi cần kiểm 403."""
+    overrides = {"REMOTE_ADDR": addr} if addr else {}
+    return client.post(
+        path,
+        data=json.dumps(body, ensure_ascii=False),
+        content_type=content_type,
+        environ_overrides=overrides,
+    )
+
+
+@pytest.fixture()
+def client():
+    """Ứng dụng đã có khóa, dùng cho các ca hạnh phạm đơn giản."""
+    return build_client()[0]
+
+
+def test_health_ok(client):
+    assert client.get("/api/health").get_json() == {"ok": True}
+
+
+def test_status_reports_configured(client):
+    assert client.get("/api/setup/status").get_json() == {"configured": True}
+
+
+@pytest.mark.parametrize("path", ["/api/setup", "/api/chat", "/api/reset"])
+def test_missing_content_type_gives_415(client, path):
+    r = client.post(path, data="{}", content_type="text/plain")
+    assert (r.status_code, r.get_json()["error"]) == (415, "unsupported_media_type")
+
+
+@pytest.mark.parametrize("path", ["/api/setup", "/api/chat", "/api/reset"])
+def test_broken_json_gives_400(client, path):
+    r = client.post(path, data="{sai", content_type="application/json")
+    assert (r.status_code, r.get_json()["error"]) == (400, "invalid_json")
+
+
+def test_setup_ok_and_never_echoes_key():
+    client, store = build_client(api_key="")[:2]
+    r = send(client, "/api/setup", {"api_key": VALID_KEY})
+    assert (r.status_code, r.get_json()) == (200, {"ok": True})
+    assert store.saved == [VALID_KEY]
+    assert VALID_KEY not in r.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("key", ["", "   ", "ngan"])
+def test_setup_invalid_key_gives_400(client, key):
+    r = send(client, "/api/setup", {"api_key": key})
+    assert (r.status_code, r.get_json()["error"]) == (400, "invalid_api_key")
+
+
+def test_setup_from_foreign_address_gives_403(client):
+    r = send(client, "/api/setup", {"api_key": VALID_KEY}, addr="10.0.0.9")
+    assert (r.status_code, r.get_json()["error"]) == (403, "forbidden")
+
+
+def test_chat_ok_shape(client):
+    r = send(client, "/api/chat", {"message": "Chào bạn", "session_id": "sess-0001"})
+    data = r.get_json()
+    assert r.status_code == 200
+    assert (data["reply"], data["model"]) == ("Xin chào", "gpt-4o-mini")
+    assert isinstance(data["ms"], int) and data["ms"] >= 0
+
+
+def test_chat_ignores_extra_fields():
+    client, _, model = build_client()
+    send(client, "/api/chat", {"message": "A", "session_id": "sess-0001", "history": ["giả"]})
+    assert model.calls[0]["history"] == []
+
+
+@pytest.mark.parametrize("body,code", [
+    ({"message": "   ", "session_id": "sess-0001"}, "invalid_message"),
+    ({"message": "x" * 4001, "session_id": "sess-0001"}, "invalid_message"),
+    ({"message": "A", "session_id": "abc"}, "invalid_session"),
+    ({"message": "A", "session_id": "sess-0001!"}, "invalid_session"),
+])
+def test_chat_bad_input_gives_400(client, body, code):
+    r = send(client, "/api/chat", body)
+    assert (r.status_code, r.get_json()["error"]) == (400, code)
+
+
+def test_chat_without_key_gives_409():
+    r = send(build_client(api_key="")[0], "/api/chat", {"message": "A", "session_id": "sess-0001"})
+    assert (r.status_code, r.get_json()["error"]) == (409, "api_key_missing")
+
+
+@pytest.mark.parametrize("status,code", [
+    (401, "invalid_api_key"),
+    (502, "upstream_unreachable"),
+    (503, "rate_limited"),
+    (504, "upstream_timeout"),
+])
+def test_chat_upstream_status_propagates(status, code):
+    client = build_client(errors=[UpstreamError(status, "Lỗi dịch vụ mô hình.")])[0]
+    r = send(client, "/api/chat", {"message": "A", "session_id": "sess-0001"})
+    assert (r.status_code, r.get_json()["error"]) == (status, code)
+
+
+def test_chat_over_16kb_gives_413(client):
+    r = send(client, "/api/chat", {"message": "x" * 17000, "session_id": "sess-0001"})
+    assert (r.status_code, r.get_json()["error"]) == (413, "payload_too_large")
+
+
+def test_reset_ok(client):
+    r = send(client, "/api/reset", {"session_id": "sess-0001"})
+    assert (r.status_code, r.get_json()) == (200, {"ok": True})
+
+
+def test_reset_bad_session_gives_400(client):
+    r = send(client, "/api/reset", {"session_id": ""})
+    assert (r.status_code, r.get_json()["error"]) == (400, "invalid_session")
+
+
+def test_unknown_endpoint_gives_404_json(client):
+    r = client.get("/api/khong-ton-tai")
+    assert r.status_code == 404
+    assert set(r.get_json()) == {"error", "message"}
+
+
+def test_wrong_method_gives_405_json(client):
+    r = client.get("/api/chat")
+    assert r.status_code == 405
+    assert set(r.get_json()) == {"error", "message"}
+
+
+def test_no_stack_trace_leaks():
+    client = build_client(errors=[RuntimeError("hỏng nặng")])[0]
+    r = send(client, "/api/chat", {"message": "A", "session_id": "sess-0001"})
+    assert r.status_code == 500
+    assert "Traceback" not in r.get_data(as_text=True)
+    assert "hỏng nặng" not in r.get_data(as_text=True)
+
+
+def test_root_serves_index_html(client):
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "<html" in r.get_data(as_text=True)[:300].lower()
+```
+
+```python
+"""Kiểm thử luồng lần đầu: hỏi khóa, lưu khóa, chat chạy, khởi tạo lại vẫn có."""
+
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.interface.create_app import create_app
+from tests.fakes.fake_chat_model import FakeChatModel
+from tests.fakes.fake_memory_repository import FakeMemoryRepository
+from tests.test_routes import STATIC_DIR, VALID_KEY, SettingsStub, send
+
+
+def build_client(env_path):
+    """Dùng cửa hàng khóa thật, chỉ thay mô hình và bộ nhớ."""
+    deps = {
+        "settings": SettingsStub(),
+        "store": EnvApiKeyStore(env_path),
+        "repo": FakeMemoryRepository(),
+        "model": FakeChatModel(replies=["Chào Lan!"]),
+        "system_prompt_loader": lambda: "Bạn là Lan.",
+        "static_dir": STATIC_DIR,
+    }
+    app = create_app(deps)
+    app.config["TESTING"] = True
+    return app.test_client()
+
+
+def test_first_run_asks_key_then_chat_works(tmp_path):
+    env_path = tmp_path / ".env"
+    client = build_client(env_path)
+    assert client.get("/api/health").get_json() == {"ok": True}
+    assert client.get("/api/setup/status").get_json() == {"configured": False}
+    r = send(client, "/api/setup", {"api_key": VALID_KEY})
+    assert (r.status_code, r.get_json()) == (200, {"ok": True})
+    assert client.get("/api/setup/status").get_json() == {"configured": True}
+    r = send(client, "/api/chat", {"message": "Tên em là Lan", "session_id": "sess-first-01"})
+    assert r.status_code == 200
+    assert r.get_json()["reply"] == "Chào Lan!"
+    text = env_path.read_text(encoding="utf-8")
+    assert "OPENAI_API_KEY=" + VALID_KEY in text
+    assert not (tmp_path / ".env.tmp").exists()
+
+
+def test_key_survives_restart(tmp_path):
+    env_path = tmp_path / ".env"
+    send(build_client(env_path), "/api/setup", {"api_key": VALID_KEY})
+    fresh = build_client(env_path)
+    assert fresh.get("/api/setup/status").get_json() == {"configured": True}
+    r = send(fresh, "/api/chat", {"message": "Chào", "session_id": "sess-first-02"})
+    assert r.status_code == 200
+
+
+def test_save_keeps_other_lines(tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_MODEL=gpt-4o-mini\nMAX_MESSAGES=5\n", encoding="utf-8")
+    send(build_client(env_path), "/api/setup", {"api_key": VALID_KEY})
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    assert "OPENAI_MODEL=gpt-4o-mini" in lines
+    assert "MAX_MESSAGES=5" in lines
+    assert lines.count("OPENAI_API_KEY=" + VALID_KEY) == 1
+
+
+def test_key_is_replaced_not_duplicated(tmp_path):
+    env_path = tmp_path / ".env"
+    env_path.write_text("OPENAI_API_KEY=giacu\n", encoding="utf-8")
+    send(build_client(env_path), "/api/setup", {"api_key": VALID_KEY})
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    assert sum(1 for line in lines if line.startswith("OPENAI_API_KEY=")) == 1
+
+
+def test_key_never_returns_to_browser(tmp_path):
+    env_path = tmp_path / ".env"
+    client = build_client(env_path)
+    send(client, "/api/setup", {"api_key": VALID_KEY})
+    r = send(client, "/api/chat", {"message": "Tên em là Lan", "session_id": "sess-first-03"})
+    assert VALID_KEY not in r.get_data(as_text=True)
+```
+
+Sample PowerShell log, RED turn then GREEN turn:
+
+```
+PS C:\chatbot> py -m pytest -q tests/test_routes.py
+============================= test session starts =============================
+collected 0 items
+
+E   ModuleNotFoundError: No module named 'src.chatbot.interface'
+E   src\chatbot\interface\create_app.py:8: in <module>
+E       from chatbot.interface.json_error import register_error_handlers
+E   ModuleNotFoundError: No module named 'src.chatbot.interface.json_error'
+=========================== short test summary info ============================
+ERROR tests/test_routes.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.42s ===============================
+```
+
+This RED turn proves the test was written before the code: with no interface layer yet the test cannot be imported.
+
+```
+PS C:\chatbot> py -m pytest -q
+.............................................................. [100%]
+70 passed in 3.81s
+```
+
+```
+PS C:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+```
+
+The command above prints nothing, meaning every file already complies with the under-100-lines rule.
+
+```
+PS C:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js,*.md,*.txt | Where-Object { $_.FullName -notmatch '\.venv' } | Select-String -Pattern 'sk-[A-Za-z0-9]{16,}'
+```
+
+The command above prints nothing, meaning no real key sits in the code or in the documentation.
+
+# 6. Notices:
+
+- Ban `debug=True` in `run.py`: turning on debug mode leaks the stack trace into the browser and breaks INV2; the Flask `reloader` (`use_reloader`) must stay disabled too, because a double start writes `memory.json` twice and corrupts it.
+- Ban `app.run()` in any file other than `run.py`: every import would occupy the port and the tests could not run.
+- Ban feeding `str(exc)` of an OpenAI error straight into the response: the error text may contain the key prefix, use `map_openai_error`.
+- Ban printing the key value to the console in `run.py` and in `json_error`: the key may live only in `.env` and in process memory.
+- Ban returning `{"error", "message", "status"}`: the client needs only two keys, an extra key breaks the JSON contract.
+- Ban storing secrets directly in `app.config`: it holds only `deps`, never keys.
+- Ban passing `history` from the client into `send_message`: history comes only from `repo`, otherwise an attacker can forge the conversation.
+- Ban skipping `require_localhost` on `/api/setup`: that route receives a secret from the user, opening it beyond localhost exposes a weakness.
+- Ban a `MAX_CONTENT_LENGTH` larger than `16 * 1024`: an unbounded body hangs the process, this is a mandatory boundary case.
+- Ban `except Exception: pass` in routes: errors must go through `register_error_handlers` to return JSON, never be swallowed.
+- Warning: `FakeApiKeyStore.save` updates `os.environ` inside the test process, so use `tmp_path` and let no environment variable leak into other tests.
+- Warning: `EnvApiKeyStore` prefers `os.environ` when the `.env` file is missing, so the "delete the file and lose the key" test goes red if the environment variables are not cleaned first.
+- Warning: placing the `pytest` import after `sys.path.insert` in `run.py` is mandatory because `src` is not yet on the system path.
+- Warning: renaming a blueprint after `register_blueprint` causes a duplicate-name error, keep the five defined names unchanged.
+- Warning: `settings.openai_model` must be read when the route runs, not at `import` time, otherwise the response-shape tests become hard to maintain.
+- Ban `innerHTML` and `dangerouslySetInnerHTML` in every `.js` file: adversarial input must still display verbatim, so prompt injection, an empty message, a 10 000 character message and HTML in a message all go through `textContent` or `escape`, React escapes the characters itself.
+- Ban creating files outside the B2 directory tree: no private `conftest.py`, no `AGENTS.local.md`, no shared `helpers.py`.
+- Ban putting a real API key into tests, into `.env.example`, into the report: the sample key is always `TEST_KEY_` followed by 20 x characters.
+- Warning: the `time.perf_counter()` used for `ms` must be placed before the `send_message` call, not after, otherwise the measurement is meaningless.
+- Warning: `require_json` calling `request.get_json(silent=True)` twice reads the body twice; read it once and check `isinstance`.
+- Warning: a busy `port 2610` raises `OSError`, not `SystemExit`; only catching `OSError` around `app.run` prints a clear message naming the port and the advice to change `PORT` in `.env`, and never crashes with a raw traceback.
+- Warning: on HTTP 429 bursts shared by every session, the class key means shared state, so retry with exponential backoff plus jitter and only then answer with a polite user message instead of a raw error.
+
+
+When writing tests for the Raising model, you must implement a hand-written fake that fully replicates the model's behavior without depending on any mocking framework's side_effect mechanism; this binding rule exists because side_effect introduces implicit coupling to call order and argument matching that silently breaks when the production code evolves, whereas an explicit fake makes the contract visible, versionable, and debuggable in isolation. The fake must live in the test support directory, export the same interface as the real model, and be constructed with deterministic seed data so every test run produces identical results regardless of execution order or parallelism. Any test that imports a mocking library and configures side_effect on the Raising model will be rejected during code review. Acceptance test: the test suite passes with all mocking libraries removed from the test dependencies and the hand-written fake used exclusively.
+
+When implementing tests for the P5 integration layer, you MUST use the exact constructor signatures of the provided fakes: `FakeApiKeyStore(api_key=...)` and `FakeChatModel(reply_text=..., raise_upstream=...)`. Do not add, remove, or reorder parameters; do not substitute positional for keyword arguments; and do not wrap these calls in helper factories that alter the signature. All test fixtures, parametrized cases, and scenario builders must instantiate these fakes directly with the shown keyword arguments so that the test suite remains coupled to the public API surface rather than implementation details. The test `test_p5_fakes_instantiated_with_exact_signatures` must pass, asserting that every fake instantiation in the codebase matches the required signature exactly.
+
+Requirement B32 is a binding rule: every live-run step in the codebase must provide both a PowerShell implementation and a POSIX-compatible shell implementation, with identical functional behavior, matching exit codes, and equivalent parameter handling across both forms; scripts must detect the host environment at runtime and dispatch to the correct variant without manual intervention, and all shared logic must be factored into common libraries to prevent divergence. The testable acceptance criterion: running the full test suite on Windows (PowerShell 7+) and Linux (bash 5+) produces zero failures and identical JSON output for every live-run command.
+
+Binding rule B35: Any code listing exceeding 99 lines constitutes a reference design that the builder must decompose into modules of at most 99 lines each, with exactly one function per file, and all imports updated accordingly; the original monolithic listing is never committed as a single file. This constraint applies recursively to generated artifacts, refactoring tasks, and any code emitted by tooling, ensuring the codebase remains composed of small, single-purpose units that are independently testable and reviewable. The builder verifies compliance by confirming every committed file contains no more than 99 lines and declares exactly one top-level function.
+
+Binding rule on the import root (B36). Every import in every source file, test and listing uses the prefix `src.chatbot.` from the project root, for example `from src.chatbot.domain.errors import UpstreamError`. The form `from chatbot.` is forbidden. Two import names for one module create two copies of it in memory, so an `isinstance` check on an exception class fails across layers and every upstream error (401, 429, timeout, empty reply) becomes a generic HTTP 500. Acceptance: `rg -n "^\s*from chatbot\." src tests run.py` prints nothing.
+
+Binding rule on the system prompt loader (B37). `system_prompt_loader` takes one argument, the path. Every listing of `build_deps` and the chat route use `lambda path: load_system_prompt(ROOT / path)`, and the route calls `deps["system_prompt_loader"](deps["settings"].system_prompt_file)`. A zero-argument lambda is forbidden: it raises `TypeError` on the first chat request and the server answers HTTP 500. Acceptance: the chat test with a fake model returns HTTP 200 through the real `build_deps`.
+# 7. Input:
+
+The learner supplies opencode, inside the chatbot directory tree on Windows 11, exactly the following items:
+
+- The current content of `pytest.ini`, to confirm `pythonpath` and `testpaths`.
+- The content of the three files `tests/fakes/fake_api_key_store.py`, `tests/fakes/fake_chat_model.py`, `tests/fakes/fake_memory_repository.py`, because the interface layer calls these fakes directly.
+- The content of `src/chatbot/domain/errors.py` and of `src/chatbot/interface/` if any part already exists, so nothing gets written twice.
+- The content of the `.env.example` file, to learn the key names and the default values in use.
+- The result of running `py -m pytest -q` before opening this prompt, pasting the error block verbatim.
+
+The API key is NOT pasted into this conversation and NOT written into any file in the project. The real key is pasted into the password field right on the chatbot page on the first run, sent with `POST /api/setup`, and the server then stores it in `.env`. After that, every question-and-answer turn needs no re-pasting. If the learner has already pasted the key into the chat, remind them to delete the message, rotate the key at the place that issued it, then enter the new key on the page. If opencode stops midway, resume by re-pasting exactly the items above, and treat a green `py -m pytest -q` run as the checkpoint.
+
+If any item in the list above is missing, opencode must ask again with exactly one short question in Vietnamese with diacritics, and only then start writing tests.
+
+# 8. OKRs (O + KRs):
+
+O: Finish the Flask interface layer and `run.py` with 12 files, with tests proving every route and every status code in table B7, and the first-run API key entry flow running end to end.
+
+- KR1: `py -m pytest -q` reports `passed` with 0 `failed`, 0 `error`, 0 `skipped`.
+- KR2: `tests/test_routes.py` has at least 24 test functions, covering 200, 400, 401, 403, 404, 405, 409, 413, 415, 500, 502, 503, 504.
+- KR3: `tests/test_first_run_flow.py` has at least 5 test functions, among them one walking all 7 steps of the first-run flow and one proving the key survives after the application is built again.
+- KR4: exactly 12 new files are created, none outside the B2 directory tree; the file-count command inside `src/chatbot/interface` yields 10 Python files plus `run.py`.
+- KR5: the command checking the under-100-lines rule prints an empty string; `run.py` alone is at most 60 lines and `json_error.py` is at most 90 lines.
+- KR6: the command scanning `sk-[A-Za-z0-9]{16,}` across all code and documentation prints an empty string; only `TEST_KEY_` followed by 20 x characters appears in the tests.
+- KR7: every error response has exactly the two keys `error` and `message`; no response contains the string `Traceback` and no response contains a key value.
+- KR8: `POST /api/setup` with a body over 16 KB returns 413, a missing `Content-Type` returns 415, a broken body returns 400, address `10.0.0.9` returns 403; these four cases each have their own test.
+- KR9: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3` must let `Invoke-RestMethod http://127.0.0.1:2610/api/health` return `ok`; if the port is busy then print the line advising to change `PORT` in `.env`.
+- KR10: running `py -m pytest -q` a second time is still green, meaning no test depends on order or on leaked state; total time is under 15 seconds.
+- KR11: the final report has all 6 items from item 1 to item 6 in section 4, including both the RED log block from before the code existed and the GREEN log block after the fix.
+- KR12: every Vietnamese string in the code and in the report carries full diacritics; no file contains an em dash.
+

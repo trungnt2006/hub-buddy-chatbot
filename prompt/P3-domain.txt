@@ -1,0 +1,1528 @@
+PROMPT P3: domain layer: Message, trim_history, errors, three ports (TDD). Paste the WHOLE text below into opencode in order P0 to P9; paste P3 only after all earlier prompts are green.
+
+# 1. Role:
+
+- Software architecture expert and TDD engineer for the core layer of a locally run web chatbot.
+- Designer of the domain conventions for conversational data: the `Message` type, the `trim_history` function, the business error tree, three abstract ports.
+- Test-first, code-later author: every function at this layer has a red test before any green code exists.
+- Guardian of domain purity: the domain knows nothing about Flask, nothing about LangChain, nothing about OpenAI, never touches the operating system.
+- Person who places the dependency boundary so that P4, P5, P6 plug in without modifying the domain.
+- Person who detects structural file violations early, for example a file exceeding 100 lines or a file containing multiple functions.
+- Person who guarantees an API key never leaks across the domain boundary, even though the domain declares the `ApiKeyStore` port.
+- Person who writes Vietnamese error messages with full diacritics, never concatenating a string holding a secret value into a message.
+- Person who strictly follows the directory tree and the function names frozen in the blueprint, never inventing new names.
+
+# 2. Context (5W1H):
+
+**What.** P3 builds exactly six pure files in `src/chatbot/domain/`: `message.py`, `trim_history.py`, `errors.py`, and three files under `domain/ports/`: `memory_repository.py`, `chat_model.py`, `api_key_store.py`. In parallel, P3 writes two proof files: `tests/test_trim_history.py` and `tests/test_domain_purity.py`. No other file may be created.
+
+**Why.** The domain layer is the only place holding business rules that do not change with technology: what a valid message is, how history is trimmed, what business errors are named, which external capabilities the system needs. If the rules sit at a higher layer, every web change or model-library change means rewriting the rules. Placing them in the domain lets P5 swap the model library without breaking tests.
+
+**Who/Where.** The reader is opencode, a coding assistant running in a Windows 11 command-line window. The working place is the project root directory `chatbot/`, with `venv` activated, all commands are PowerShell. The user is a learner, unfamiliar with DDD, needing each file small and readable.
+
+**When.** P3 stands third in the chain of ten prompts. P0 builds `AGENTS.md` and the rule set. P1 builds the directory tree, `requirements.txt`, `pytest.ini`, so the directory tree and `venv` already exist before P3 runs. P2 builds `config/*`, meaning `Settings` and `load_settings` are green and must not be reused or edited by P3. After P3 come P4 (application), P5 (infrastructure), P6 (interface), P7 (MUI interface), P8 (trial run), P9 (debugging and acceptance).
+
+**How.** The TDD loop has four repeating beats for each function: (1) write a red test with the fixed name from the blueprint list; (2) run `py -m pytest -q` to confirm it is red for the right reason; (3) write minimal code to make it green; (4) re-run the whole `py -m pytest -q` and re-run the 100-line check command. `test_domain_purity.py` runs at every beat, because a domain boundary violation must be exposed immediately.
+
+**Prompt shape.** This prompt is the blueprint for opencode: reading all of part A and part B is enough to build the whole domain layer. Part A sits before the blueprint, part B sits after the blueprint. All content is written in formal spec, Vietnamese with full diacritics for prose, keeping English for code names, commands, keys, paths.
+
+**Constraints.** Short dashes only, no em dashes. Do not use `python3`, `curl`, `sudo`, `source`, `grep`. Invoke Python with `py`. Do not write any string starting with `sk-`; the sample key in tests is always `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`. Do not use `innerHTML` except to forbid it. Do not run the server inside opencode's shell. Each file under 100 lines, each function its own file.
+
+**First-run API key flow.** On the first run, the server starts at `http://127.0.0.1:2610` even without a key. The page calls `GET /api/setup/status`; if `{"configured": false}` then a MUI dialog appears to enter the key; `POST /api/setup` writes the key into `.env`. P3 writes no route and no dialog, but that chain passes through the domain in exactly two places: (a) the `ApiKeyStore` port with the three methods `is_configured()`, `get()`, `save()` is the contract that P5 installs with `EnvApiKeyStore` and that P4 calls through `get_setup_status` and `configure_api_key`; (b) the `ApiKeyMissing` class declared in `domain/errors.py` is the error that P4 raises when `send_message` sees `store.is_configured()` as false, and that P6 maps to code 409 so that P7 reopens the key dialog. In addition, the `ChatModel.reply(system_prompt, history, user_text)` port is where the key is read again on every turn, so the learner can chat immediately after saving the key without restarting. Therefore P3 must declare in advance all the error names that P4 and P6 need, and declare the port signatures with the exact names so that P5 only has to install, not modify the domain.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE.
+
+- PRE.1. You are standing at the project root directory `chatbot/`. Check: `Get-Location | Select-Object -ExpandProperty Path` returns a path ending with `chatbot`.
+- PRE.2. `venv` already exists and is activated. Check: `Test-Path .\.venv\Scripts\Activate.ps1` returns `True`; the command `py -V` returns a Python version number.
+- PRE.3. `pytest.ini` exists since P1. Check: `Test-Path .\pytest.ini` returns `True`.
+- PRE.4. The directories `src/chatbot/domain/` and `src/chatbot/domain/ports/` already exist thanks to P1. Check: `Test-Path .\src\chatbot\domain\ports` returns `True`.
+- PRE.5. `src/chatbot/__init__.py` exists and is empty. Check: `Test-Path .\src\chatbot\__init__.py` returns `True`.
+- PRE.6. No file in `domain/` has had its content from the previous run overwritten without being read again. Check: `Get-ChildItem -Recurse .\src\chatbot\domain -File | Select-Object -ExpandProperty FullName` lists exactly the files that already existed.
+- PRE.7. `config/*` from P2 is green and must not be edited in P3. Check: `py -m pytest -q tests/test_load_settings.py` runs green before you start.
+- PRE.8. No extra file is created outside P3's scope list. Check: `Get-ChildItem -Recurse .\src\chatbot\domain -File | Measure-Object` returns exactly the six `.py` files below after P3 is complete.
+- PRE.9. Every new test lives in `tests/`, never beside the source code. Check: `Test-Path .\tests\test_trim_history.py` and `Test-Path .\tests\test_domain_purity.py` return `True`.
+- PRE.10. Before writing code, `tests/test_trim_history.py` already exists with the fixed names and is red. Check: run `py -m pytest -q tests/test_trim_history.py` and read the error line to see the missing function.
+- PRE.11. The server must not run inside opencode's shell. Check: no command calls `py run.py` in P3; the server check command belongs to P8.
+- PRE.12. No string in any generated file starts with `sk-`. Check: `Get-ChildItem -Recurse -Include *.py,*.js -Path . | Where-Object { $_.FullName -notmatch '\.venv' } | Select-String -Pattern 'sk-'` prints nothing.
+- PRE.13. The only sample key used in tests is `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`. Check: `Select-String -Path .\tests\test_domain_purity.py -Pattern 'TEST_KEY_'` prints at least one matching line.
+- PRE.14. `python3`, `curl`, `sudo`, `source`, `grep` are not used in any P3 file. Check: `Select-String -Path .\src\chatbot\domain\*.py,.\src\chatbot\domain\ports\*.py -Pattern 'python3|curl|sudo|grep'` prints nothing.
+- PRE.15. The seven classes in `ports/` together with `Message` and `trim_history` have no implementation yet in P3. Check: `Select-String -Path .\src\chatbot\domain\ports\*.py -Pattern '^\s{4}def .*:' | Measure-Object` returns 0 matching lines before the bodies are written.
+- PRE.16. The annotation type using the syntax `list[Message]` is valid on the machine's Python interpreter. Check: `py -c "print(list[str])"` raises no error.
+
+POST.
+
+- POST.1. `py -m pytest -q tests/test_trim_history.py` is green, and green is the result of writing code, not of disabling tests.
+- POST.2. `py -m pytest -q tests/test_domain_purity.py` is green: it scans every file in `domain/` and asserts that no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`.
+- POST.3. `py -m pytest -q` is green across the board, including the P1 and P2 test files.
+- POST.4. The 100-line check command prints empty for every `.py` and `.js` file in the project outside `.venv`.
+- POST.5. `Message("human", "xin chào")` can be created and an empty `Message.content` raises `ValueError`.
+- POST.6. `trim_history` with 0, 1, 5, 6 and 12 messages at `limit=5` returns results checkable with `len(...)` and with an order check.
+- POST.7. `trim_history(..., limit=0)` and `trim_history(..., limit=-3)` both raise `ValueError`.
+- POST.8. `trim_history` does not modify the list passed in; after the call, `len(danh_sach_vào)` and each element stay unchanged.
+- POST.9. All three ports in `ports/` cannot be instantiated directly: `MemoryRepository()`, `ChatModel()`, `ApiKeyStore()` all raise `TypeError`, and the tests catch this with `pytest.raises`.
+- POST.10. Every class in `errors.py` inherits indirectly from `ChatbotError`, and `UpstreamError` carries exactly two fields, `status` of type `int` and `message` of type `str`.
+- POST.11. No file in `domain/` contains a string that prints a real key value; `EnvApiKeyStore` and `mask_secret` belong to P5, P3 only declares the contract.
+- POST.12. Each file in `domain/` contains exactly one unit (one class or one function), except `__init__.py` which is allowed to be empty.
+- POST.13. No `.js`, `.html`, `.css` file is created in P3.
+- POST.14. Line counts per file: `message.py` at most 30, `trim_history.py` at most 30, `errors.py` at most 45, each file in `ports/` at most 30, `tests/test_trim_history.py` at most 99, `tests/test_domain_purity.py` at most 99.
+- POST.15. Every method in the three ports is marked `@abc.abstractmethod`, and `MemoryRepository`, `ChatModel`, `ApiKeyStore` all inherit directly from `abc.ABC`.
+- POST.16. `trim_history` returns a new `list` on every call, it never returns the very list passed in.
+- POST.17. `Message` with an odd `role`, for example `"Human"` or `"bot"`, raises `ValueError` immediately at initialization, not at usage time.
+- POST.18. No P3 message contains an em dash, and no message contains a line control character.
+- POST.19. `git status` or `Get-ChildItem` shows exactly six new `.py` files in `domain/` and two new test files in `tests/`, with no stray file.
+- POST.20. `py -m pytest -q tests/test_trim_history.py tests/test_domain_purity.py -v` prints the fixed blueprint test names, none of the names is changed.
+
+INV.
+
+- INV.1. The dependency boundary runs one way: `interface` may know `application`, `application` may know `domain`, `infrastructure` may know `domain`; `domain` must know nobody.
+- INV.2. The domain has no imports of `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json` in any file under `domain/`.
+- INV.3. The domain does not read `os.environ`, does not open files, does not call the network, does not write logs. In other words: the forbidden import command is checked by a test, not by spoken convention.
+- INV.4. DDD: the `Message` class is a frozen value object, self-defending its validity right in `__post_init__`, not because another layer calls a check first.
+- INV.5. DDD: the three files in `ports/` are inverted dependency contracts, declared with `abc.ABC` and `abc.abstractmethod`; the real implementations belong to P5.
+- INV.6. The `MemoryRepository` port has exactly three methods `get(session_id)`, `append(session_id, messages)`, `reset(session_id)`; the `ChatModel` port has exactly one `reply(system_prompt, history, user_text)`; the `ApiKeyStore` port has exactly three `is_configured()`, `get()`, `save(api_key)`.
+- INV.7. Port signatures are a strict string contract: parameters with reference types and return values with reference types appear in the annotation or the function signature, so that P4 and P5 never have to guess.
+- INV.8. `Message.role` accepts only `"human"` or `"ai"`; every other value, including a case variant such as `"Human"`, raises `ValueError`.
+- INV.9. `Message.content` must be a non-empty string after trimming leading and trailing whitespace; whitespace only is also empty and is rejected.
+- INV.10. All business errors live in a single `errors.py` file, named without odd suffixes, not split into many files; the minimum list: `ChatbotError`, `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError`.
+- INV.11. `UpstreamError` is the only class carrying data: `status` is the raw HTTP code, `message` is the Vietnamese message with full diacritics, used by P6 to build the error JSON body.
+- INV.12. `trim_history` is a pure function: the same input always gives the same output, no time dependence, no file dependence, no global state dependence.
+- INV.13. `trim_history` preserves the message order of the input; the last `limit` messages are returned in the exact old order, not reversed.
+- INV.14. `trim_history` with an empty list returns an empty list, and with a list shorter than `limit` returns all the messages, trimming nothing.
+- INV.15. `trim_history` creates a new list; appending to the input list and assigning `messages[:] = ...` on the parameter are forbidden.
+- INV.16. TDD: every domain function has at least one test with a fixed name in `tests/test_trim_history.py` before the function body is written, and the red test is red because the function is missing, not because of a syntax error.
+- INV.17. TDD: no `pytest.mark.skip`, no skip-comment trick to get green, no deleting asserts to get green.
+- INV.18. TDD: `test_domain_purity.py` is a standing state, and every domain edit must re-run this file.
+- INV.19. The one-function-one-file rule applies to both code and tests: one test function in `test_trim_history.py` checks only one unit of behaviour, one helper function in `test_domain_purity.py` does only one scanning job.
+- INV.20. Every file in `domain/` is under 100 lines counting blank lines and comment lines, and P1's line check command must print empty.
+- INV.21. An API key never enters the domain: the domain has no parameter named as a real key value, no variable holding a key value, no format string concatenating a key into an error message.
+- INV.22. `ApiKeyStore.get()` returns a string and `ApiKeyStore.save(api_key)` accepts a string; the domain does not validate the key's shape, that belongs to `validate_api_key` in P4.
+- INV.23. Configuration is never pushed into the domain: every runtime parameter (model, temperature, timeout, maximum message count) goes through P2's `Settings`, `trim_history` only receives `limit` as a hand-passed integer.
+- INV.24. `ValueError` messages and error class messages are written in Vietnamese with full diacritics, short, naming exactly the rule that was violated, and stating the accepted range when there is one.
+- INV.25. Function names, class names, field names are written in English and match the blueprint absolutely: `Message`, `trim_history`, `role`, `content`, `status`, `message`, `system_prompt`, `history`, `user_text`, `session_id`, `api_key`.
+- INV.26. Annotation types use `list[Message]`, not `typing.List`, and `from __future__ import annotations` is unnecessary because `list[...]` is valid on current Python.
+- INV.27. No em dash is used in error message strings and in source comments; only short dashes are used.
+- INV.28. The `import` order in each domain file is: `abc` or `dataclasses` first, then `from .` or `from ..` for internal packages; absolutely no third group.
+- INV.29. Domain files use relative paths for internal imports, so that they run without installing the package into `site-packages`.
+- INV.30. Every P3 error message must be usable as the `message` value in P6's error JSON body, meaning a single-line string with no line control character.
+- INV.31. `trim_history` cuts counting from the END of the list, that is it keeps the `limit` newest messages, it does not keep the `limit` first messages.
+- INV.32. `limit` is an integer; a value greater than `0` is valid even when very large, and then the whole list is returned.
+- INV.33. The domain defines no configuration constants such as `MAX_MESSAGES`; the number `5` appears only in tests as an input value, never in domain code.
+- INV.34. The `MemoryRepository.append` port accepts one `list[Message]` and returns `None`; the port must not gain a local delete method or a message counter.
+- INV.35. The `ChatModel.reply` port returns `str`, not a subclass object from a provider, so that the domain does not depend on a model library.
+- INV.36. The `ApiKeyStore` port declares no file-reading method, no file-writing method, and never mentions the `.env` file name.
+- INV.37. No domain file contains a filesystem call, including `open(`, `write(` and `read_text(`.
+- INV.38. No domain file contains a `print(` call except in a comment line; the domain is silent when running.
+- INV.39. When a test is red because a function is missing, the error message must contain the name of the function that needs importing, for example `trim_history`, so the learner knows what is still missing.
+- INV.40. Every test in `tests/test_trim_history.py` and `tests/test_domain_purity.py` computes the file path from `tests/test_*.py` to find the project root directory, without depending on the current working directory when `pytest` runs from the root.
+
+## 3b. Short glossary
+
+- **opencode**: a coding assistant running in a command-line window, reading a long prompt then producing files and running test commands on Windows 11.
+- **API**: application programming interface, here an external service that answers with text, not running on the learner's machine.
+- **endpoint**: a specific path on the server that a browser or another program calls over HTTP, for example `/api/setup/status`.
+- **venv**: a Python virtual environment created with `py -m venv .venv`, isolating the project libraries from system libraries, activated with `.\.venv\Scripts\Activate.ps1`.
+- **pytest**: the automatic test-running tool for Python, the command used in this project is `py -m pytest -q`, the configuration file is `pytest.ini`.
+- **DDD**: domain-driven design, a method that separates business rules into the core `domain/` layer and lets higher layers plug in through `ports/` contracts.
+- **TDD**: the method of writing tests first, minimal code later, and re-running to keep a continuously green state.
+- **MUI**: the Material user interface library for React, here loaded from CDN and using `React.createElement` instead of JSX syntax.
+- **formal spec**: a way of writing formal specifications made of PRE, POST, INV, ERR, KILL blocks and numbered steps, such that every condition is checkable by a command or by a test.
+- **port**: an abstract class in the domain naming the function signatures that the infrastructure layer must install, with no executable body yet.
+- **pure function**: a function that gives the same output for the same input and never touches external state such as files, network, or time.
+- **frozen dataclass**: an auto-generated data class with the `frozen=True` flag, reassigning a field after initialization raises an error.
+- **first-run**: the first launch of the application on the learner's machine, when `.env` holds no key yet, so the key must be asked for before chatting.
+- **invariant (INV)**: a statement always true no matter who calls, written to be checkable by a test or a command, not relying on spoken convention.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation procedure (TDD)
+
+PRE- The build scope of P3 consists of exactly eight files: `src/chatbot/domain/message.py`, `src/chatbot/domain/trim_history.py`, `src/chatbot/domain/errors.py`, `src/chatbot/domain/ports/memory_repository.py`, `src/chatbot/domain/ports/chat_model.py`, `src/chatbot/domain/ports/api_key_store.py`, `tests/test_trim_history.py`, `tests/test_domain_purity.py`.
+- P1 has already created `pytest.ini`, `requirements.txt`, the `requirements.txt` of the virtual Python environment created with `py -m venv .venv`, and the `src/chatbot/` tree. The command `py -m pytest -q` at the project root must run and report `no tests ran` before P3 adds files.
+- The machine is Windows 11, PowerShell, Python invoked with `py`, minimum version 3.10 so that the `list[Message]` type annotation is usable.
+- `sys.path` already contains the project root thanks to the `pythonpath = .` entry in `pytest.ini` and because the run command is `py -m pytest`.
+- P3 continues from P2: `config/` can already read `.env`, but the `domain/` layer must not know about any configuration file. The `domain/` and `domain/ports/` directories work thanks to Python's namespace package mechanism, so B2 does not list a package initializer file in either place.
+- `src/chatbot/domain/` does not exist when P3 starts. This is a legitimate RED condition, not a defect.
+
+POST
+- `py -m pytest -q tests/test_trim_history.py tests/test_domain_purity.py` reports all green, 19 test cases in total (13 cases in the history-trimming file, 6 cases in the independent file).
+- B11's line-counting command prints no file in `src/chatbot/domain` nor in `tests`.
+- `py -m pytest -q` at the project root reports `19 passed`, because at the end of P3 only P3's tests exist.
+- No file other than the eight files listed in PRE is created or modified.
+
+INV
+- INV.1 `domain/` must not import any module outside the standard library other than `abc` and `dataclasses`; verify with `tests/test_domain_purity.py`.
+- INV.2 No API key exists in any variable, constant, error message or comment of `domain/`; if an example is needed, use `TEST_KEY_` followed by twenty x's.
+- INV.3 Every `list[Message]` returned by `trim_history` is a NEW list; operations on the result do not change the input list.
+- INV.4 `Message` is a frozen dataclass: reassigning an attribute must raise an error.
+- INV.5 The three ports are `abc.ABC` abstract classes; calling the parent class directly must raise `TypeError`.
+- INV.6 Dependency arrows inside `domain/` only point inward; `domain/` does not import `interface`, `application`, `infrastructure`.
+- INV.7 The set of abstract methods of each port is a constant of the contract with P4 and P5: `MemoryRepository` exactly three methods, `ChatModel` exactly one, `ApiKeyStore` exactly three.
+- INV.8 `domain/` neither stores nor produces HTML content; a message containing special characters such as `<script>` is kept verbatim, and the decision about rendering belongs to P7.
+
+Terms used exactly once in this section
+- opencode: a coding utility that runs in a command window, reads a prompt, then generates files.
+- API: application programming interface, here it is OpenAI's text-response service.
+- endpoint: a specific path on the server that the client calls, for example `/api/chat`.
+- venv: a virtual Python environment created with `py -m venv .venv`.
+- pytest: an automated test runner for Python.
+- DDD: layered architecture by business domain, where dependency arrows always point inward.
+- TDD: the process of writing the test first, minimizing code until the test is green, then cleaning up.
+- MUI: a React component library brand following Material Design.
+- formal spec: a formal specification using PRE, POST, INV, ERR, KILL blocks together with logical symbols.
+
+### Step 1. First RED: build the independent test table before any code exists
+
+1. Files to create: `tests/test_domain_purity.py`. There is no production function; this is a pure test file.
+2. Idea: place an "alarm" independent of the code under test. This test table reads the `src/chatbot/domain` directory with `pathlib`, parses the syntax tree with the standard-library `ast`, then asserts: the file set matches B2, no file imports a forbidden module, every file is under 100 lines, the three ports are abstract and have exactly the right set of abstract methods, class names and function names live in the right files.
+3. Mandatory design constraint: do NOT import port classes at module level, because in the RED state the `domain/` tree does not exist yet and a collection error would hide the true meaning of the red. Every port import goes through `nap_port`, and every test calls `tep_python()` first so that the directory exists.
+4. Pseudocode for `tep_python()`:
+```
+HÀM tep_python():
+    NẾU KHÔNG tồn tại DOMAIN: raise AssertionError "thiếu thư mục ..."
+    DANH SÁCH := mọi tệp .py trong DOMAIN đệ quy
+    LOẠI bỏ mọi mục có "__pycache__" trong các phần tử đường dẫn
+    SẮP XẾP DANH SÁCH tăng dần
+    TRẢ về DANH SÁCH
+```
+5. Pseudocode for the forbidden-module check:
+```
+VỚI MỖI path trong tep_python():
+    CÂY := ast.parse(nội dung path)
+    VỚI MỖI nút trong ast.walk(CÂY):
+        NẾU nút là ast.Import: DANH SÁCH := [a.name cho a trong nút.names]
+        NẾU nút là ast.ImportFrom: DANH SÁCH := [nút.module hoặc chuỗi rỗng]
+        NGƯỢC LẠI: BỎ QUA nút này
+        VỚI MỖI mục trong DANH SÁCH:
+            KHẲNG ĐỊNH phần_đầu(mục, trước dấu chấm đầu tiên) KHÔNG nằm trong CAM
+```
+6. PowerShell check command: `py -m pytest -q tests/test_domain_purity.py`
+7. Expected result in the RED state: `6 failed`; all six errors contain exactly the message `thiếu thư mục ...\src\chatbot\domain`, because the directory tree does not exist yet. This is a red of the right meaning, not a red caused by a syntax error in the test file.
+
+```python
+import ast
+import importlib
+from pathlib import Path
+
+import pytest
+
+GOC = Path(__file__).resolve().parents[1]
+DOMAIN = GOC / "src" / "chatbot" / "domain"
+CAM = {
+    "flask", "langchain", "langchain_core", "langchain_openai", "openai",
+    "dotenv", "os", "pathlib", "json", "sqlite3", "requests", "httpx",
+}
+TEN = {
+    "errors.py", "message.py", "trim_history.py", "ports/memory_repository.py",
+    "ports/chat_model.py", "ports/api_key_store.py",
+}
+HOP_DONG = {
+    "src.chatbot.domain.ports.memory_repository": ("MemoryRepository", {"get", "append", "reset"}),
+    "src.chatbot.domain.ports.chat_model": ("ChatModel", {"reply"}),
+    "src.chatbot.domain.ports.api_key_store": ("ApiKeyStore", {"is_configured", "get", "save"}),
+}
+TEN_LOP_TRONG_TEP = {
+    "message.py": {"Message"},
+    "trim_history.py": {"trim_history"},
+    "errors.py": {"ChatbotError", "ApiKeyMissing", "InvalidApiKey", "InvalidMessage",
+                  "InvalidSession", "UpstreamError"},
+}
+
+
+def tep_python():
+    assert DOMAIN.is_dir(), f"thiếu thư mục {DOMAIN}"
+    return sorted(p for p in DOMAIN.rglob("*.py") if "__pycache__" not in p.parts)
+
+
+def ten_tep(path):
+    return path.relative_to(DOMAIN).as_posix()
+
+
+def noi_dung(path):
+    return path.read_text(encoding="utf-8")
+
+
+def nap_port(duong_dan):
+    ten_lop = HOP_DONG[duong_dan][0]
+    return getattr(importlib.import_module(duong_dan), ten_lop)
+
+
+def test_danh_sach_tep_khong_doi():
+    assert {ten_tep(p) for p in tep_python()} == TEN
+
+
+def test_khong_import_framework():
+    for path in tep_python():
+        for nut in ast.walk(ast.parse(noi_dung(path))):
+            if isinstance(nut, ast.Import):
+                ten = [a.name for a in nut.names]
+            elif isinstance(nut, ast.ImportFrom):
+                ten = [nut.module or ""]
+            else:
+                continue
+            for muc in ten:
+                assert muc.split(".")[0] not in CAM, f"{ten_tep(path)} nạp {muc}"
+
+
+def test_moi_tep_duoi_100_dong():
+    for path in tep_python():
+        so = len(noi_dung(path).splitlines())
+        assert so < 100, f"{ten_tep(path)} có {so} dòng"
+
+
+def test_port_la_abstract_dung_phuong_thuc():
+    tep_python()
+    for duong_dan, hop in HOP_DONG.items():
+        assert nap_port(duong_dan).__abstractmethods__ == frozenset(hop[1]), duong_dan
+
+
+def test_port_khong_khoi_tao_truc_tiep():
+    tep_python()
+    for duong_dan in HOP_DONG:
+        lop = nap_port(duong_dan)
+        with pytest.raises(TypeError):
+            lop()
+
+
+def test_ten_lop_khop_tap_file():
+    tep_python()
+    for ten_tap, ky_vong in TEN_LOP_TRONG_TEP.items():
+        nut = ast.parse(noi_dung(DOMAIN / ten_tap))
+        thuc = {n.name for n in nut.body if isinstance(n, (ast.ClassDef, ast.FunctionDef))}
+        assert ky_vong <= thuc, ten_tap
+```
+
+### Step 2. GREEN round for `errors.py`
+
+1. Files to create: `src/chatbot/domain/errors.py`. The `src/chatbot/domain` directory is generated at the same time as the file. No free function, only one constructor, `UpstreamError`.
+2. Signatures: `class ChatbotError(Exception)`, then `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError` all inherit directly from `ChatbotError`. `UpstreamError.__init__(self, status: int, message: str)` stores `self.status` and `self.message` after calling `super().__init__(message)`.
+3. Pseudocode:
+```
+LỚP ChatbotError(Exception): không có thân
+LỚP ApiKeyMissing(ChatbotError): không có thân
+LỚP InvalidApiKey(ChatbotError): không có thân
+LỚP InvalidMessage(ChatbotError): không có thân
+LỚP InvalidSession(ChatbotError): không có thân
+LỚP UpstreamError(ChatbotError):
+    HÀM __init__(status, message):
+        super().__init__(message)
+        self.status := status
+        self.message := message
+```
+4. Why `UpstreamError` carries the status code: B6 requires `map_openai_error` to return the pair `(status, message)` and B7 maps it straight to the JSON response. Carrying the code in the error class keeps P5 from having to invent a new code in P6.
+5. PowerShell check command: `py -m pytest -q tests/test_domain_purity.py`
+6. Expected result: `4 failed, 2 passed`. The four failures are `test_danh_sach_tep_khong_doi` (the on-disk file set has only `errors.py`), `test_port_la_abstract_dung_phuong_thuc` and `test_port_khong_khoi_tao_truc_tiep` (the three port files do not exist yet, so importing the class breaks), `test_ten_lop_khop_tap_file` (`message.py` and `trim_history.py` do not exist yet). The two green cases are `test_khong_import_framework` and `test_moi_tep_duoi_100_dong`.
+
+```python
+class ChatbotError(Exception):
+    """Gốc của mọi lỗi nghiệp vụ của tầng domain."""
+
+
+class ApiKeyMissing(ChatbotError):
+    """Chưa có khóa API trong bộ nhớ tiến trình."""
+
+
+class InvalidApiKey(ChatbotError):
+    """Khóa API sai hình thức."""
+
+
+class InvalidMessage(ChatbotError):
+    """Tin người dùng rỗng hoặc quá dài."""
+
+
+class InvalidSession(ChatbotError):
+    """session_id không khớp mẫu ^[A-Za-z0-9-]{8,64}$."""
+
+
+class UpstreamError(ChatbotError):
+    """Lỗi từ dịch vụ mô hình, mang mã HTTP đã ánh xạ sẵn."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+```
+
+### Step 3. RED round for `message.py`
+
+1. Files to create: `tests/test_trim_history.py`, minimal version with only three tests about `Message`. The data-builder function `tao_tin` is added in Step 5, because it is not needed yet in this step.
+2. Test names: `test_message_role_la`, `test_message_content_rong`, `test_message_dong_bang`.
+3. Pseudocode:
+```
+test_message_role_la():
+    VỚI MỖI role trong ("bot", "system", "user", "assistant", "Human", ""):
+        VỚI pytest.raises(ValueError): Message(role, "xin chào")
+
+test_message_content_rong():
+    VỚI MỖI content trong ("", "   ", "\n\t "):
+        VỚI pytest.raises(ValueError): Message("human", content)
+
+test_message_dong_bang():
+    tin := Message("ai", "chào bạn")
+    VỚI pytest.raises(Exception): gán tin.role := "human"
+    KHẲNG ĐỊNH tin.role == "ai"
+```
+4. PowerShell check command: `py -m pytest -q tests/test_trim_history.py -k "message"`
+5. Expected result: collection error with `ModuleNotFoundError: No module named 'src.chatbot.domain.message'`, that is red because code is missing, not because of a syntax error in the test file.
+
+```python
+import pytest
+
+from src.chatbot.domain.message import Message
+
+
+def test_message_role_la():
+    for role in ("bot", "system", "user", "assistant", "Human", ""):
+        with pytest.raises(ValueError):
+            Message(role, "xin chào")
+
+
+def test_message_content_rong():
+    for content in ("", "   ", "\n\t "):
+        with pytest.raises(ValueError):
+            Message("human", content)
+
+
+def test_message_dong_bang():
+    tin = Message("ai", "chào bạn")
+    with pytest.raises(Exception):
+        tin.role = "human"
+    assert tin.role == "ai"
+```
+
+### Step 4. GREEN round for `message.py`
+
+1. Files to create: `src/chatbot/domain/message.py`. Signature `Message(role: str, content: str)`, dataclass `frozen=True`, validation inside `__post_init__`.
+2. The constant `ROLE_HOP_LE` stays in the same file, not split into another file, because B2 has no separate constants file inside `domain/`.
+3. Pseudocode:
+```
+LỚP Message, dataclass(frozen=True)
+    trường role: str
+    trường content: str
+    HÀM __post_init__:
+        NẾU self.role KHÔNG thuộc ROLE_HOP_LE: raise ValueError
+        NẾU self.content KHÔNG phải str: raise ValueError
+        NẾU self.content.strip() rỗng: raise ValueError
+```
+4. Why `role` must be checked before `content`: the error message must name the exact broken field so that P6 maps the error code without guessing.
+5. PowerShell check command: `py -m pytest -q tests/test_trim_history.py -k "message"`
+6. Expected result: `3 passed`. Assigning `tin.role = "ai"` raises `FrozenInstanceError`, and since `FrozenInstanceError` is a subclass of `AttributeError`, `pytest.raises(Exception)` catches it.
+
+```python
+from dataclasses import dataclass
+
+ROLE_HOP_LE = ("human", "ai")
+
+
+@dataclass(frozen=True)
+class Message:
+    """Một tin trong lịch sử trò chuyện: chỉ 'human' hoặc 'ai', nội dung không rỗng."""
+
+    role: str
+    content: str
+
+    def __post_init__(self):
+        if self.role not in ROLE_HOP_LE:
+            raise ValueError(f"role phải là 'human' hoặc 'ai', nhận '{self.role}'")
+        if not isinstance(self.content, str) or not self.content.strip():
+            raise ValueError("content không được rỗng hoặc chỉ có khoảng trắng")
+```
+
+### Step 5. RED round for `trim_history.py`
+
+1. Files to modify: `tests/test_trim_history.py`, adding the data-builder function `tao_tin` and the remaining six tests; ten tests in total produce thirteen runs.
+2. Test names: `test_trim_theo_so_luong` (five parametrized cases), `test_trim_giu_thu_tu`, `test_trim_limit_khong_duong`, `test_trim_khong_sua_danh_sach_vao`, `test_trim_tra_lien_tuc_moi`, `test_loi_ke_thua_chatbot_error`.
+3. Pseudocode of each test:
+```
+tao_tin(so):
+    TRẢ về danh sách so phần tử, phần tử thứ i là Message("human", f"tin {i}")
+
+test_trim_theo_so_luong(vao, ra):
+    DANH SÁCH := tao_tin(vao)
+    KẾT QUẢ := trim_history(DANH SÁCH, 5)
+    KHẲNG ĐỊNH len(KẾT QUẢ) == ra
+
+test_trim_giu_thu_tu():
+    KẾT QUẢ := trim_history(tao_tin(6), 5)
+    KHẲNG ĐỊNH [m.content cho m trong KẾT QUẢ] == ["tin 1","tin 2","tin 3","tin 4","tin 5"]
+
+test_trim_limit_khong_duong():
+    VỚI pytest.raises(ValueError): trim_history(tao_tin(3), 0)
+    VỚI pytest.raises(ValueError): trim_history(tao_tin(3), -2)
+
+test_trim_khong_sua_danh_sach_vao():
+    GHI lại cặp (role, content) của sáu tin trước khi gọi
+    trim_history(DANH SÁCH, 5)
+    KHẲNG ĐỊNH cặp ghi lại sau đó KHÔNG đổi
+
+test_trim_tra_lien_tuc_moi():
+    KHẲNG ĐỊNH trim_history(DANH SÁCH, 5) == DANH SÁCH[1:]
+    KHẲNG ĐỊNH trim_history(DANH SÁCH, 5) is not DANH SÁCH
+
+test_loi_ke_thua_chatbot_error():
+    VỚI MỖI loi trong (ApiKeyMissing, InvalidApiKey, InvalidMessage, InvalidSession):
+        KHẲNG ĐỊNH issubclass(loi, ChatbotError)
+    KHẲNG ĐỊNH issubclass(ChatbotError, Exception)
+    KHẲNG ĐỊNH UpstreamError(503, "...") có status 503 và message khớp nguyên văn
+```
+4. PowerShell check command: `py -m pytest -q tests/test_trim_history.py`
+5. Expected result: collection error with `ModuleNotFoundError: No module named 'src.chatbot.domain.trim_history'`.
+
+```python
+import pytest
+
+from src.chatbot.domain.errors import (
+    ApiKeyMissing,
+    ChatbotError,
+    InvalidApiKey,
+    InvalidMessage,
+    InvalidSession,
+    UpstreamError,
+)
+from src.chatbot.domain.message import Message
+from src.chatbot.domain.trim_history import trim_history
+
+
+def tao_tin(so):
+    return [Message("human", f"tin {i}") for i in range(so)]
+
+
+@pytest.mark.parametrize("vao, ra", [(0, 0), (1, 1), (5, 5), (6, 5), (12, 5)])
+def test_trim_theo_so_luong(vao, ra):
+    assert len(trim_history(tao_tin(vao), 5)) == ra
+
+
+def test_trim_giu_thu_tu():
+    ket_qua = trim_history(tao_tin(6), 5)
+    assert [m.content for m in ket_qua] == ["tin 1", "tin 2", "tin 3", "tin 4", "tin 5"]
+
+
+def test_trim_limit_khong_duong():
+    with pytest.raises(ValueError):
+        trim_history(tao_tin(3), 0)
+    with pytest.raises(ValueError):
+        trim_history(tao_tin(3), -2)
+
+
+def test_trim_khong_sua_danh_sach_vao():
+    danh_sach = tao_tin(6)
+    truoc = [(m.role, m.content) for m in danh_sach]
+    trim_history(danh_sach, 5)
+    assert [(m.role, m.content) for m in danh_sach] == truoc
+
+
+def test_trim_tra_lien_tuc_moi():
+    danh_sach = tao_tin(6)
+    ket_qua = trim_history(danh_sach, 5)
+    assert ket_qua == danh_sach[1:]
+    assert ket_qua is not danh_sach
+
+
+def test_message_role_la():
+    for role in ("bot", "system", "user", "assistant", "Human", ""):
+        with pytest.raises(ValueError):
+            Message(role, "xin chào")
+
+
+def test_message_content_rong():
+    for content in ("", "   ", "\n\t "):
+        with pytest.raises(ValueError):
+            Message("human", content)
+
+
+def test_message_dong_bang():
+    tin = Message("ai", "chào bạn")
+    with pytest.raises(Exception):
+        tin.role = "human"
+    assert tin.role == "ai"
+
+
+def test_loi_ke_thua_chatbot_error():
+    for loi in (ApiKeyMissing, InvalidApiKey, InvalidMessage, InvalidSession):
+        assert issubclass(loi, ChatbotError)
+    assert issubclass(ChatbotError, Exception)
+    loi = UpstreamError(503, "Hệ thống đang quá tải, thử lại sau")
+    assert loi.status == 503
+    assert loi.message == "Hệ thống đang quá tải, thử lại sau"
+```
+
+### Step 6. GREEN round for `trim_history.py`
+
+1. Files to create: `src/chatbot/domain/trim_history.py`. Signature `trim_history(messages: list[Message], limit: int) -> list[Message]`.
+2. Import `Message` by relative path within the same package, and use it for the type annotation.
+3. Pseudocode:
+```
+HÀM trim_history(messages, limit):
+    NẾU limit KHÔNG phải int HOẶC là bool: raise ValueError
+    NẾU limit <= 0: raise ValueError
+    NẾU len(messages) == 0: TRẢ về []
+    NẾU len(messages) <= limit: TRẢ về list(messages)
+    TRẢ về list(messages[len(messages) - limit:])
+```
+4. Why `bool` is blocked: in Python the `bool` class is a subclass of `int`, so `trim_history(x, True)` would trim down to one message if it were not blocked. This is an edge case because the configuration is read from an environment variable.
+5. Why `len(messages) == limit` returns the whole list: B5 specifies that fewer than or equal to `limit` returns everything; the equal case must not be trimmed short.
+6. PowerShell check command: `py -m pytest -q tests/test_trim_history.py`
+7. Expected result: `13 passed`. `test_trim_theo_so_luong` alone contributes five runs thanks to parametrization.
+
+```python
+from .message import Message
+
+
+def trim_history(messages: list[Message], limit: int) -> list[Message]:
+    """Trả về `limit` tin CUỐI, giữ nguyên thứ tự, không sửa danh sách vào."""
+    if not isinstance(limit, int) or isinstance(limit, bool):
+        raise ValueError("limit phải là số nguyên")
+    if limit <= 0:
+        raise ValueError("limit phải lớn hơn 0")
+    if len(messages) == 0:
+        return []
+    if len(messages) <= limit:
+        return list(messages)
+    return list(messages[len(messages) - limit:])
+```
+
+### Step 7. GREEN round for the three ports
+
+1. Files to create: `src/chatbot/domain/ports/memory_repository.py`, `src/chatbot/domain/ports/chat_model.py`, `src/chatbot/domain/ports/api_key_store.py`. Three files in total, each under 30 lines.
+2. Signatures: `MemoryRepository.get/append/reset`, `ChatModel.reply`, `ApiKeyStore.is_configured/get/save`. Each method carries `@abc.abstractmethod` and only a one-line Vietnamese comment with full diacritics. Leave the method body empty, no need for `raise NotImplementedError`, because Python blocks a direct call to the parent class right at instantiation.
+3. Pseudocode:
+```
+LỚP MemoryRepository(abc.ABC):
+    gắn @abc.abstractmethod cho get(session_id) -> list[Message]
+    gắn @abc.abstractmethod cho append(session_id, messages) -> None
+    gắn @abc.abstractmethod cho reset(session_id) -> NoneLỚP ChatModel(abc.ABC):
+    gắn @abc.abstractmethod cho reply(system_prompt, history, user_text) -> str
+
+LỚP ApiKeyStore(abc.ABC):
+    gắn @abc.abstractmethod cho is_configured() -> bool
+    gắn @abc.abstractmethod cho get() -> str
+    gắn @abc.abstractmethod cho save(api_key: str) -> None
+```
+4. Contract constraints with P4 and P5: `ChatModel.reply` takes three parameters in exactly the B4 order, `ApiKeyStore.get` returns a string instead of a configuration object, so that P5 can change the storage method without having to modify P4.
+5. PowerShell check command: `py -m pytest -q tests/test_domain_purity.py -k "port"`
+6. Expected result: `2 passed`. The test `test_port_khong_khoi_tao_truc_tiep` confirms that `TypeError` is raised when calling `MemoryRepository()` directly.
+7. Additional PowerShell check command: `py -m pytest -q tests/test_domain_purity.py` ⇒ `5 failed, 1 passed`, because exactly one test is still red, `test_danh_sach_tep_khong_doi`, due to the on-disk file set still lacking the three not-yet-written files, namely `message.py` and `trim_history.py`; not yet in this test file's target list, then already there, so the cause must be re-read from the actual message before fixing.
+
+```python
+import abc
+
+from ..message import Message
+
+
+class MemoryRepository(abc.ABC):
+    """Cổng lưu lịch sử trò chuyện theo session_id."""
+
+    @abc.abstractmethod
+    def get(self, session_id: str) -> list[Message]:
+        """Trả về toàn bộ tin của phiên, danh sách rỗng nếu phiên chưa tồn tại."""
+
+    @abc.abstractmethod
+    def append(self, session_id: str, messages: list[Message]) -> None:
+        """Nối thêm tin vào cuối phiên."""
+
+    @abc.abstractmethod
+    def reset(self, session_id: str) -> None:
+        """Xoá phiên; phiên chưa tồn tại vẫn là thành công im lặng."""
+```
+
+```python
+import abc
+
+from ..message import Message
+
+
+class ChatModel(abc.ABC):
+    """Cổng gọi dịch vụ mô hình và nhận về một chuỗi trả lời."""
+
+    @abc.abstractmethod
+    def reply(self, system_prompt: str, history: list[Message], user_text: str) -> str:
+        """Trả về nội dung trả lời; lỗi dịch vụ thì ném UpstreamError."""
+```
+
+```python
+import abc
+
+
+class ApiKeyStore(abc.ABC):
+    """Cổng đọc và ghi khóa API, giấu hoàn toàn chi tiết lưu trữ."""
+
+    @abc.abstractmethod
+    def is_configured(self) -> bool:
+        """Đúng khi đã có khóa khác rỗng."""
+
+    @abc.abstractmethod
+    def get(self) -> str:
+        """Trả khóa hiện tại, chuỗi rỗng nếu chưa cấu hình."""
+
+    @abc.abstractmethod
+    def save(self, api_key: str) -> None:
+        """Ghi khóa mới theo cách ghi nguyên tử rồi cập nhật bộ nhớ tiến trình."""
+```
+
+### Step 8. REFACTOR round and full-scope verification
+
+1. Files to verify: all eight files in PRE.
+2. Cleanup work: delete every redundant line, keep the full meaning of the Vietnamese messages with complete diacritics, do not merge several concepts into one function, do not add comments explaining each line, do not add helper functions outside B2's file list.
+3. Overall PowerShell check command: `py -m pytest -q tests/test_trim_history.py tests/test_domain_purity.py`
+4. B11's 100-line rule check command: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }`
+5. Expected result: final line `19 passed`; the line-counting command prints no file.
+6. Whole-suite check command, without starting the server: `py -m pytest -q` ⇒ `19 passed` because there are currently only P3's tests.
+7. Re-check three things by eye: every docstring in `domain/` has full Vietnamese diacritics; there is no real key anywhere; the two port files do not share a single file.
+8. There is no javascript code in P3: the whole `domain` layer is plain Python, the javascript part belongs to P7 and must use `React.createElement`.
+
+## 3d. Decision tables
+
+Table 3d-1. Decisions of `trim_history(messages, limit)`
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `limit` is a bool or is not an int | raises an error before every other branch | `ValueError` |
+| `limit <= 0` | raises an error before every other branch | `ValueError` |
+| `messages` empty, `limit` valid | `[]` | does not raise |
+| `len(messages) < limit` | a fresh copy of the whole list | does not raise |
+| `len(messages) == limit` | a fresh copy of the whole list, not trimmed short | does not raise |
+| `len(messages) > limit` | a fresh copy of the LAST `limit` messages, keeping the old order | does not raise |
+| any case that has passed the `limit` check | the input list keeps every element unchanged | does not raise |
+
+Table 3d-2. Decisions of the `Message` constructor
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `role="human"` or `"ai"`, `content` has at least one non-whitespace character | a valid frozen object | does not raise |
+| `role="bot"`, `"system"`, `"user"`, `"assistant"`, `"Human"` or another string | rejected at `__post_init__`, the message repeats the received value | `ValueError` |
+| `role` is `None` or a number | rejected at the `role` branch | `ValueError` |
+| `content=""` or only whitespace, including newline and tab | rejected at the `content` branch | `ValueError` |
+| `content` is not a str | rejected at the `content` branch | `ValueError` |
+| `content` contains Vietnamese with diacritics, emoji, or the string `<script>` | accepted, kept verbatim, no filtering, no encoding | does not raise |
+| reassigning `message.role` or `message.content` after creation | rejected because the dataclass is frozen | `FrozenInstanceError` |
+
+Table 3d-3. Decisions of error classification
+
+| Class | Direct parent | When it arises | Own attributes |
+|---|---|---|---|
+| `ChatbotError` | `Exception` | not raised directly, only for grouping catches | none |
+| `ApiKeyMissing` | `ChatbotError` | no API key when sending a message | none |
+| `InvalidApiKey` | `ChatbotError` | key malformed at `/api/setup` | none |
+| `InvalidMessage` | `ChatbotError` | message empty or longer than 4000 characters | none |
+| `InvalidSession` | `ChatbotError` | `session_id` does not match the pattern | none |
+| `UpstreamError` | `ChatbotError` | error from the model service | `status: int`, `message: str` |
+
+Table 3d-4. Decisions of port instantiation
+
+| Situation | Output result | Error code or exception |
+|---|---|---|
+| calling `MemoryRepository()`, `ChatModel()`, `ApiKeyStore()` directly | rejected, because abstract methods are still unimplemented | `TypeError` |
+| subclass implements every method | can be instantiated | does not raise |
+| subclass is missing exactly one abstract method | rejected | `TypeError` |
+| subclass has an extra method without the decorator | can still be instantiated, the extra method belongs to the subclass | does not raise |
+| reading `Lop.__abstractmethods__` | returns a `frozenset` of exactly the set of method names | does not raise |
+
+Table 3d-5. Decisions of the independent test `test_domain_purity.py`
+
+| Situation | Test action | Expected result |
+|---|---|---|
+| the `domain/` directory does not exist yet | `tep_python()` raises an assertion error | all six tests red |
+| a file in `domain/` imports a module in `CAM` | test red with the file name and the module name | red |
+| the imported module is `dataclasses`, `abc`, or only package-internal modules | skipped | green |
+| file has 99 lines | accepted | green |
+| file has 100 lines or more | test red with the line count | red |
+| the `__pycache__` directory appears after a test run | excluded from the file list | green |
+| `errors.py` contains `ChatbotError` and five child errors | the `ast.ClassDef` elements are matched | green |
+| a file path on Windows contains backslashes | normalized with `as_posix()` before comparison | green |
+
+Table 3d-6. Decisions across the RED GREEN REFACTOR rounds
+
+| Step | PowerShell command | Expected result at exactly that point |
+|---|---|---|
+| Step 1 | `py -m pytest -q tests/test_domain_purity.py` | `6 failed` with the missing-directory message |
+| Step 2 | `py -m pytest -q tests/test_domain_purity.py` | `4 failed, 2 passed` |
+| Step 3 | `py -m pytest -q tests/test_trim_history.py -k "message"` | collection error, missing module `message` |
+| Step 4 | `py -m pytest -q tests/test_trim_history.py -k "message"` | `3 passed` |
+| Step 5 | `py -m pytest -q tests/test_trim_history.py` | collection error, missing module `trim_history` |
+| Step 6 | `py -m pytest -q tests/test_trim_history.py` | `13 passed` |
+| Step 7 | `py -m pytest -q tests/test_domain_purity.py -k "port"` | `2 passed` |
+| Step 8 | `py -m pytest -q tests/test_trim_history.py tests/test_domain_purity.py` | `19 passed` |
+
+## ERR
+
+ERR.1. Symptom: `ModuleNotFoundError: No module named 'src.chatbot.domain'`. Cause: running the test command from outside the project root, or `pytest.ini` missing the `pythonpath = .` entry. Resolution: `Set-Location` into the project root and check that `pytest.ini` has exactly one line `pythonpath = .`. Related files: `pytest.ini`, `tests/test_trim_history.py`.
+
+ERR.2. Symptom: `test_khong_import_framework` is red with the message `trim_history.py nạp os`. Cause: while writing quickly, `os.path` or `json` was used in `domain/`. Resolution: move the file reading and writing to `infrastructure`, keep `domain` with only pure dataclasses. Related files: `tests/test_domain_purity.py`, `src/chatbot/domain/trim_history.py`.
+
+ERR.3. Symptom: `py -m pytest -q` reports `no tests ran`. Cause: `testpaths` in `pytest.ini` points to the wrong directory. Resolution: set `testpaths = tests` and `python_files = test_*.py`. Related files: `pytest.ini`.
+
+ERR.4. Symptom: `test_trim_theo_so_luong[12-5]` is red while the other four cases are green. Cause: trimming with `messages[:limit]`, that is taking the FIRST `limit` messages. Resolution: switch to the tail slice `messages[len(messages) - limit:]`. Related files: `src/chatbot/domain/trim_history.py`.
+
+ERR.5. Symptom: `test_trim_theo_so_luong[0-0]` is red because the function skips the empty-list branch. Cause: writing `if messages and len(messages) > limit` and then putting `return messages` at the end, which makes the empty case return the input list itself instead of a new list. Resolution: add a dedicated branch for `len(messages) == 0` returning `[]`. Related files: `src/chatbot/domain/trim_history.py`.
+
+ERR.6. Symptom: `test_trim_limit_khong_duong` is red because `limit=0` returns `[]` instead of raising. Cause: using `if limit > 0` to guard the slice. Resolution: raise `ValueError` before every remaining branch. Related files: `src/chatbot/domain/trim_history.py`.
+
+ERR.7. Symptom: `test_trim_khong_sua_danh_sach_vao` is red after using `messages.pop(0)` to trim. Cause: the function has a side effect on the argument. Resolution: do not use `pop`, `del`, `sort`; only create a new list with `list`. Related files: `src/chatbot/domain/trim_history.py`.
+
+ERR.8. Symptom: `test_trim_giu_thu_tu` is red with the result `["tin 0","tin 1","tin 2","tin 3","tin 4"]`. Cause: slicing at the head of the list and then reversing the order. Resolution: slice at the tail and keep the old order. Related files: `src/chatbot/domain/trim_history.py`.
+
+ERR.9. Symptom: `test_message_role_la` is red because `Message("bot", "xin chào")` does not raise. Cause: `__post_init__` was omitted. Resolution: add the `ROLE_HOP_LE` membership check. Related files: `src/chatbot/domain/message.py`.
+
+ERR.10. Symptom: `test_message_content_rong` is red because `Message("ai", "   ")` is accepted. Cause: using `if not self.content` instead of checking after stripping whitespace. Resolution: use `self.content.strip()`. Related files: `src/chatbot/domain/message.py`.
+
+ERR.11. Symptom: `test_message_dong_bang` is red at the `tin.role` assignment. Cause: forgetting `frozen=True`. Resolution: add `frozen=True` to the `@dataclass` decorator. Related files: `src/chatbot/domain/message.py`.
+
+ERR.12. Symptom: `test_port_khong_khoi_tao_truc_tiep` is red because `ChatModel()` can run. Cause: forgetting `abc.ABC` or missing `@abc.abstractmethod`. Resolution: add the decorator to every method. Related files: `src/chatbot/domain/ports/chat_model.py`.
+
+ERR.13. Symptom: `test_port_la_abstract_dung_phuong_thuc` is red with `frozenset({'get'})` instead of all three methods. Cause: `reset` omitted in `MemoryRepository`. Resolution: check table 3d-4 then add the missing method. Related files: `src/chatbot/domain/ports/memory_repository.py`.
+
+ERR.14. Symptom: `test_loi_ke_thua_chatbot_error` is red at the `UpstreamError.status` part. Cause: `__init__` only calls `super().__init__` without assigning the attributes. Resolution: assign `self.status` and `self.message`. Related files: `src/chatbot/domain/errors.py`.
+
+ERR.15. Symptom: `test_loi_ke_thua_chatbot_error` is red because `issubclass(InvalidMessage, ChatbotError)` returns the wrong answer. Cause: a child error inherits directly from `Exception` "for convenience". Resolution: change the direct parent to `ChatbotError`. Related files: `src/chatbot/domain/errors.py`.
+
+ERR.16. Symptom: `test_ten_lop_khop_tap_file` is red because `Message` sits in `errors.py`. Cause: pasted the wrong block while assembling. Resolution: one concept one file per the rule in B2. Related files: `src/chatbot/domain/errors.py`, `src/chatbot/domain/message.py`.
+
+ERR.17. Symptom: `test_danh_sach_tep_khong_doi` is red because the on-disk file set contains an unexpected file. Cause: a draft file or an auto-generated file accidentally placed in `domain/`. Resolution: delete the unexpected file; do not relax the file list in the test to let it pass. Related files: `tests/test_domain_purity.py`.
+
+ERR.18. Symptom: `test_khong_import_framework` is red with a nonsensical message like `trim_history.py nạp dataclasses`. Cause: `dataclasses` mistakenly put into the forbidden list, or comparing the whole module string instead of the part before the first dot. Resolution: keep `dataclasses` outside the forbidden list and always split off the leading recursive part before comparing. Related files: `tests/test_domain_purity.py`.
+
+ERR.19. Symptom: `test_moi_tep_duoi_100_dong` is red because compiled files inside `__pycache__` are counted in the list. Cause: filtering the wrong path part. Resolution: remove every path that has a part named `__pycache__`. Related files: `tests/test_domain_purity.py`.
+
+ERR.20. Symptom: `test_danh_sach_tep_khong_doi` is red with a path message of the form `ports\chat_model.py`. Cause: using `str(p.relative_to(...))` on Windows, which produces backslashes. Resolution: use `as_posix()` to normalize the separator before comparing. Related files: `tests/test_domain_purity.py`.
+
+ERR.21. Symptom: `test_moi_tep_duoi_100_dong` is red but the reader sees no too-long file when opening it in the editor. Cause: counting lines by eye, the trailing blank line of the file is counted twice. Resolution: measure with `len(noi_dung(p).splitlines())` exactly as the test does, do not measure with a manual counting command. Related files: `tests/test_domain_purity.py`.
+
+ERR.22. Symptom: the test comparing an undiacriticized Vietnamese message with a diacriticized one goes red. Cause: typing without diacritics when writing the expected string. Resolution: rewrite the expected string with full diacritics. Related files: `tests/test_trim_history.py`, `src/chatbot/domain/errors.py`.
+
+ERR.23. Symptom: `test_khong_import_framework` is red when reading a `message.py` that has `import dataclasses`. Cause: omitting the `ast.ImportFrom` node handling branch, so only `ast.Import` is seen. Resolution: handle both node kinds, take `nut.module` for `ast.ImportFrom` and the `nut.names` list for `ast.Import`. Related files: `tests/test_domain_purity.py`, `src/chatbot/domain/message.py`.
+
+ERR.24. Symptom: the test is red at the part that checks the Vietnamese content with diacritics inside docstrings. Cause: writing the sample content without diacritics. Resolution: every Vietnamese string in code and comments must have full diacritics, docstrings included. Related files: `src/chatbot/domain/errors.py`, `src/chatbot/domain/ports/chat_model.py`.
+
+ERR.25. Symptom: proposing a new test that rejects content containing `<script>` and the test goes red. Cause: the misunderstanding that the domain layer must filter HTML. Resolution: keep every valid content verbatim per table 3d-2; escaping characters at render time belongs to P7. Related files: `src/chatbot/domain/message.py`.
+
+## KILL
+
+KILL.1. Stop immediately and report if a real API key is found in any file of `domain/` or in any error message, including in the message of `UpstreamError`. If an example is needed in a test, use only `TEST_KEY_` followed by twenty x's. Report the file name and the line number.
+
+KILL.2. Stop if `tests/test_domain_purity.py` is red because `domain/` imports a module in the forbidden list of table 3d-5, and the code cannot be moved to another layer within P3 scope. Report the file, the importing line, the module name.
+
+KILL.3. Stop if a file in `domain/` exceeds 100 lines and cannot be split while still keeping the one-concept-one-file rule. Report the file name together with the line count and the list of concept names merged in it.
+
+KILL.4. Stop if the name or signature of `Message`, `trim_history`, `ChatbotError`, `MemoryRepository`, `ChatModel`, `ApiKeyStore` has to be changed. That is the contract with P4 and P5; it must not be modified in P3.
+
+KILL.5. Stop if after three RED GREEN REFACTOR rounds `py -m pytest -q tests/test_trim_history.py tests/test_domain_purity.py` still has errors. Report the red test names, the actual message, the expected message.
+
+KILL.6. Stop if there is any intention to create any file outside the B2 directory tree, including a helper file or a configuration file specific to P3. Report the intended path and the reason; the B2 tree is a closed list, not extended in P3.
+
+KILL.7. Stop if you plan to add a package initializer file into the `domain` directory or into the `ports` directory inside it, because B2 lists a package initializer only at the `src/chatbot` level. The two subpackages run via the namespace package mechanism; adding files would create a contradiction with P1. Report the path.
+
+KILL.8. Stop if the command to run is not a PowerShell command. Use only `py` and the PowerShell commands already listed in B11.
+
+KILL.9. Stop if a real API key is found anywhere in test code, fixtures or notes. Delete it and replace it with `TEST_KEY_` followed by twenty x's, then report the file name.
+
+KILL.10. Stop if you plan to modify a file belonging to P2, P4, P5 or P6 while doing P3. The dependency arrow means `domain` must not know the face of the layer above; if a capability is needed, report it and wait for P4 to extend.
+
+KILL.11. Stop if `domain/` contains the string `innerHTML` or `dangerouslySetInnerHTML`, even only to forbid it. UI code belongs to P7, not P3; if the rule needs repeating, write it in words in `AGENTS.md`.
+
+KILL.12. Stop if you want to add configuration validation, configuration file reading or network latency measurement inside `domain/`. Those three capabilities belong to `config/` and `infrastructure/`; adding them here would break INV.1.
+
+# 4. Format:
+
+## 4.1. Result file table (follow the B2 tree exactly, do not add strange files)
+
+| File | Mandatory content | Max lines |
+|---|---|---|
+| `src/chatbot/domain/__init__.py` | completely empty | 0 |
+| `src/chatbot/domain/message.py` | frozen dataclass `Message` + `ROLE_HUMAN`, `ROLE_AI`, `ALLOWED_ROLES` | 40 |
+| `src/chatbot/domain/trim_history.py` | the `trim_history` function | 30 |
+| `src/chatbot/domain/errors.py` | `ChatbotError` and 5 subclasses | 50 |
+| `src/chatbot/domain/ports/__init__.py` | completely empty | 0 |
+| `src/chatbot/domain/ports/memory_repository.py` | port `MemoryRepository`, 3 abstract functions | 40 |
+| `src/chatbot/domain/ports/chat_model.py` | port `ChatModel`, 1 abstract function | 30 |
+| `src/chatbot/domain/ports/api_key_store.py` | port `ApiKeyStore`, 3 abstract functions | 40 |
+| `tests/__init__.py` | completely empty | 0 |
+| `tests/fakes/__init__.py` | completely empty | 0 |
+| `tests/fakes/fake_memory_repository.py` | repository fake, records calls into `calls` | 60 |
+| `tests/fakes/fake_chat_model.py` | model fake, allows fault injection | 60 |
+| `tests/fakes/fake_api_key_store.py` | key store fake, allows fault injection | 50 |
+| `tests/test_trim_history.py` | boundary cases 0, 1, 5, 6, 12; limit 0, negative, wrong type; order; does not mutate the input list; unknown role; empty content; frozen | 99 |
+| `tests/test_domain_purity.py` | scan forbidden imports, scan the 100-line rule, scan error inheritance, scan abstract ports | 99 |
+
+Exactly 15 files in total. The four `__init__.py` files must be byte-empty per rule B2.
+
+## 4.2. Domain contract and decision table
+
+`Message`:
+- PRE: `role` is a `str` in `ALLOWED_ROLES`; `content` is a `str` that is non-empty after trimming whitespace.
+- POST: a `frozen`, `eq=True` object with the two fields `role` and `content`.
+- INV: every created `Message` is immutable; assigning an attribute again throws `dataclasses.FrozenInstanceError`.
+- ERR: a wrong-typed `role`, an unknown role, a wrong-typed `content`, or content that is only whitespace all throw `ValueError`.
+- KILL: do NOT trim `content` whitespace yourself, because trimming belongs to `validate_message` in the application layer.
+
+`trim_history(messages, limit)`:
+
+| Input condition | Return result | Note |
+|---|---|---|
+| `messages` is empty | `[]` | does not throw |
+| `len(messages) <= limit` | a copy containing all messages | preserves order |
+| `len(messages) > limit` | exactly the LAST `limit` messages | preserves order |
+| `limit = 0` | no return value | throws `ValueError` |
+| `limit` is negative | no return value | throws `ValueError` |
+| `limit` is `bool` or not `int` | no return value | throws `ValueError` |
+
+- INV: the result is a NEW list; `len(kết quả) = min(len(messages), limit)`; the incoming `messages` does not have a single element changed.
+- ERR: only `ValueError`; do not use `IndexError`, do not return an empty list in place of an error.
+- KILL: do NOT modify `messages` with `del`, `pop`, `sort`, because the layer above still reuses the original list.
+
+`errors.py`:
+- INV: ∀ error class ∈ {`ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError`} ⇒ `issubclass(class, ChatbotError)` and `issubclass(class, Exception)`.
+- POST of `UpstreamError`: it has `status: int` and `message: str`, and calls `super().__init__(message)`.
+
+The three ports:
+- PRE: inherits `abc.ABC`, every business function is decorated with `@abc.abstractmethod`.
+- POST: `MemoryRepository()` ⇒ `TypeError`; `ChatModel()` ⇒ `TypeError`; `ApiKeyStore()` ⇒ `TypeError`.
+- INV: the `__abstractmethods__` set of `MemoryRepository` = {`get`, `append`, `reset`}; of `ChatModel` = {`reply`}; of `ApiKeyStore` = {`is_configured`, `get`, `save`}.
+- KILL: do NOT add concrete methods to an abstract class, because only the infrastructure layer is allowed to implement them.
+
+## 4.3. File writing rules
+
+- Each function or each class gets its OWN file; every file stays UNDER 100 lines, including test files and fake files.
+- Runs on Python 3.11 or later; use annotations like `list[Message]`, `dict[str, list[Message]]`, `Exception | None`.
+- Domain does NOT import `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; it also does not open files.
+- Dependency arrow: interface → application → domain; infrastructure implements ports. Domain does NOT import backwards to application or infrastructure.
+- Vietnamese comments and message strings must have FULL diacritics; code names, keywords, and paths stay English.
+- Use only the short hyphen, never the en dash.
+- Do not put Markdown tables in Python files; tables live only in the prompt and in the opencode report.
+- Imports in tests use full paths from the project root: `from src.chatbot.domain.message import Message`; `pytest.ini` must have `pythonpath = .`.
+- Fakes in `tests/fakes/` serve tests only; they must not be imported into production code.
+- Write tests BEFORE production code; run `py -m pytest -q` to see the RED run, then write the code.
+
+## 4.4. The final opencode report (printed outside the code, in Vietnamese)
+
+The report has exactly four blocks, in this order:
+
+1. **File table**: columns `File | Lines | Status`, one row for every file in 4.1, sorted by the B2 tree.
+2. **RED run**: quote verbatim the `short test summary info` block of the `py -m pytest -q` run made before writing the code, with the names of at least 3 red cases.
+3. **GREEN run**: quote verbatim the last line of the `py -m pytest -q` run made after writing the code, for example `57 passed in 0.46s`.
+4. **Cross-check**: a table mapping each case in B9 to the corresponding test name, concluding `XANH` or `ĐỎ`.
+
+KILL: if after 3 fix rounds there are still red cases, stop immediately, print the round you stopped at, quote verbatim the still-red `short test summary info` and state the reason it is not green yet.
+
+# 5. Example:
+
+## 5.1. `src/chatbot/domain/message.py`
+
+```python
+"""Tin nhắn miền. Chỉ chứa dữ liệu thuần, không phụ thuộc thư viện ngoài."""
+
+from dataclasses import dataclass
+
+ROLE_HUMAN = "human"
+ROLE_AI = "ai"
+ALLOWED_ROLES = (ROLE_HUMAN, ROLE_AI)
+
+
+@dataclass(frozen=True)
+class Message:
+    """Một tin trong lịch sử hội thoại. Đóng băng để không sửa ngoài ý muốn."""
+
+    role: str
+    content: str
+
+    def __post_init__(self) -> None:
+        # PRE: role thuộc ALLOWED_ROLES, content là chuỗi không rỗng.
+        # POST: nếu sai thì ném ValueError, đối tượng không được tạo.
+        if not isinstance(self.role, str) or self.role not in ALLOWED_ROLES:
+            raise ValueError("role phải là 'human' hoặc 'ai'")
+        if not isinstance(self.content, str) or self.content.strip() == "":
+            raise ValueError("content phải là chuỗi không rỗng")
+```
+
+## 5.2. `src/chatbot/domain/trim_history.py`
+
+```python
+"""Cắt lịch sử còn N tin cuối. Không sửa danh sách truyền vào."""
+
+from .message import Message
+
+
+def trim_history(messages: list[Message], limit: int) -> list[Message]:
+    """Trả list MỚI chứa tối đa `limit` tin CUỐI, giữ nguyên thứ tự."""
+    # PRE: messages là list[Message], limit là số nguyên > 0.
+    # POST: len(kết quả) = min(len(messages), limit), thứ tự không đổi.
+    # ERR: limit sai kiểu hoặc limit <= 0 thì ném ValueError.
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+        raise ValueError("limit phải là số nguyên lớn hơn 0")
+    if len(messages) == 0:
+        return []
+    return list(messages[-limit:])
+```
+
+## 5.3. `src/chatbot/domain/errors.py`
+
+```python
+"""Cây lỗi miền. Mọi tầng phía trên đều bắt ChatbotError."""
+
+
+class ChatbotError(Exception):
+    """Lỗi gốc của chatbot."""
+
+
+class ApiKeyMissing(ChatbotError):
+    """Chưa có khóa API trong bộ nhớ tiến trình."""
+
+
+class InvalidApiKey(ChatbotError):
+    """Khóa API sai hình thức."""
+
+
+class InvalidMessage(ChatbotError):
+    """Tin người dùng rỗng hoặc quá dài."""
+
+
+class InvalidSession(ChatbotError):
+    """Mã phiên sai định dạng."""
+
+
+class UpstreamError(ChatbotError):
+    """Lỗi từ dịch vụ mô hình, mang theo mã trạng thái số nguyên."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+```
+
+## 5.4. `src/chatbot/domain/ports/memory_repository.py`
+
+```python
+"""Port lưu lịch sử hội thoại. Cài đặt thật nằm ở infrastructure."""
+
+import abc
+
+from ..message import Message
+
+
+class MemoryRepository(abc.ABC):
+    """Kho lịch sử theo session_id."""
+
+    @abc.abstractmethod
+    def get(self, session_id: str) -> list[Message]:
+        """Trả lịch sử của một phiên, rỗng nếu chưa có."""
+
+    @abc.abstractmethod
+    def append(self, session_id: str, messages: list[Message]) -> None:
+        """Nối thêm tin vào cuối phiên."""
+
+    @abc.abstractmethod
+    def reset(self, session_id: str) -> None:
+        """Xoá sạch một phiên; phiên chưa tồn tại vẫn coi là thành công."""
+```
+
+## 5.5. `src/chatbot/domain/ports/chat_model.py`
+
+```python
+"""Port mô hình trả lời. Cài đặt thật dùng LangChain ở infrastructure."""
+
+import abc
+
+from ..message import Message
+
+
+class ChatModel(abc.ABC):
+    """Nguồn sinh câu trả lời."""
+
+    @abc.abstractmethod
+    def reply(self, system_prompt: str, history: list[Message], user_text: str) -> str:
+        """Trả về nội dung trả lời dạng chuỗi không rỗng."""
+```
+
+## 5.6. `src/chatbot/domain/ports/api_key_store.py`
+
+```python
+"""Port lưu khóa API. Cài đặt thật ghi tệp .env ở infrastructure."""
+
+import abc
+
+
+class ApiKeyStore(abc.ABC):
+    """Nơi giữ khóa API duy nhất, không ghi ra log."""
+
+    @abc.abstractmethod
+    def is_configured(self) -> bool:
+        """True khi đã có khóa không rỗng."""
+
+    @abc.abstractmethod
+    def get(self) -> str:
+        """Trả khóa hiện tại, có thể rỗng."""
+
+    @abc.abstractmethod
+    def save(self, api_key: str) -> None:
+        """Ghi khóa mới; lỗi ghi phải ném lại."""
+```
+
+## 5.7. `tests/fakes/fake_memory_repository.py`
+
+```python
+"""Bản giả kho lịch sử cho test tầng trên."""
+
+from src.chatbot.domain.message import Message
+from src.chatbot.domain.ports.memory_repository import MemoryRepository
+
+
+class FakeMemoryRepository(MemoryRepository):
+    """Lưu trong bộ nhớ, ghi lại lời gọi để assert thứ tự."""
+
+    def __init__(self) -> None:
+        self.sessions: dict[str, list[Message]] = {}
+        self.calls: list[tuple[str, str]] = []
+
+    def get(self, session_id: str) -> list[Message]:
+        self.calls.append(("get", session_id))
+        return list(self.sessions.get(session_id, []))
+
+    def append(self, session_id: str, messages: list[Message]) -> None:
+        self.calls.append(("append", session_id))
+        self.sessions.setdefault(session_id, []).extend(messages)
+
+    def reset(self, session_id: str) -> None:
+        self.calls.append(("reset", session_id))
+        self.sessions[session_id] = []
+```
+
+## 5.8. `tests/fakes/fake_chat_model.py`
+
+```python
+"""Bản giả ChatModel: trả câu trả lời đặt trước, cho phép tiêm lỗi."""
+
+from src.chatbot.domain.message import Message
+from src.chatbot.domain.ports.chat_model import ChatModel
+
+
+class FakeChatModel(ChatModel):
+    """Ghi lại lời gọi để test kiểm thứ tự tin nhận vào."""
+
+    def __init__(self, reply_text: str = "xin chào") -> None:
+        self.reply_text = reply_text
+        self.error: Exception | None = None
+        self.calls: list[tuple[str, list[str], str]] = []
+
+    def reply(self, system_prompt: str, history: list[Message], user_text: str) -> str:
+        self.calls.append((system_prompt, [m.content for m in history], user_text))
+        if self.error is not None:
+            raise self.error
+        return self.reply_text
+```
+
+## 5.9. `tests/fakes/fake_api_key_store.py`
+
+```python
+"""Bản giả ApiKeyStore: giữ khóa trong bộ nhớ, cho phép tiêm lỗi."""
+
+from src.chatbot.domain.ports.api_key_store import ApiKeyStore
+
+
+class FakeApiKeyStore(ApiKeyStore):
+    """Không chạm tệp thật, không ghi ra log."""
+
+    def __init__(self, api_key: str = "") -> None:
+        self.api_key = api_key
+        self.error: Exception | None = None
+        self.saved: list[str] = []
+
+    def is_configured(self) -> bool:
+        return self.api_key.strip() != ""
+
+    def get(self) -> str:
+        return self.api_key
+
+    def save(self, api_key: str) -> None:
+        if self.error is not None:
+            raise self.error
+        self.saved.append(api_key)
+        self.api_key = api_key
+```
+
+## 5.10. `tests/test_trim_history.py`
+
+```python
+"""Ca biên của trim_history và Message."""
+
+import dataclasses
+
+import pytest
+
+from src.chatbot.domain.message import Message
+from src.chatbot.domain.trim_history import trim_history
+
+
+def build(count: int) -> list[Message]:
+    """Dựng count tin người, nội dung h0, h1, ..."""
+    return [Message("human", f"h{i}") for i in range(count)]
+
+
+@pytest.mark.parametrize("count,expected", [(0, 0), (1, 1), (5, 5), (6, 5), (12, 5)])
+def test_returns_last_limit_messages(count: int, expected: int) -> None:
+    ket_qua = trim_history(build(count), 5)
+    assert len(ket_qua) == expected
+
+
+def test_keeps_original_order() -> None:
+    ket_qua = trim_history(build(12), 5)
+    assert [m.content for m in ket_qua] == ["h7", "h8", "h9", "h10", "h11"]
+
+
+@pytest.mark.parametrize("limit", [0, -1, -5, True, "3"])
+def test_bad_limit_raises(limit: object) -> None:
+    with pytest.raises(ValueError):
+        trim_history(build(3), limit)
+
+
+def test_does_not_mutate_input() -> None:
+    danh_sach_goc = build(6)
+    ban_sao_chup = list(danh_sach_goc)
+    ket_qua = trim_history(danh_sach_goc, 5)
+    assert danh_sach_goc == ban_sao_chup
+    assert ket_qua is not danh_sach_goc
+
+
+def test_empty_input_returns_empty() -> None:
+    assert trim_history([], 5) == []
+
+
+@pytest.mark.parametrize("role", ["system", "", "HUMAN", "assistant", None, 1])
+def test_message_rejects_unknown_role(role: object) -> None:
+    with pytest.raises(ValueError):
+        Message(role, "xin chào")
+
+
+@pytest.mark.parametrize("content", ["", "   ", "\n", None, 5])
+def test_message_rejects_blank_content(content: object) -> None:
+    with pytest.raises(ValueError):
+        Message("human", content)
+
+
+def test_message_is_frozen() -> None:
+    tin = Message("human", "xin chào")
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        tin.content = "đổi"
+```
+
+## 5.11. `tests/test_domain_purity.py`
+
+```python
+"""Kiểm domain không dính framework, giữ luật 100 dòng và kế thừa lỗi."""
+
+import re
+from pathlib import Path
+
+import pytest
+
+from src.chatbot.domain.errors import ChatbotError
+from src.chatbot.domain.ports.api_key_store import ApiKeyStore
+from src.chatbot.domain.ports.chat_model import ChatModel
+from src.chatbot.domain.ports.memory_repository import MemoryRepository
+
+DOMAIN_DIR = Path(__file__).resolve().parents[1] / "src" / "chatbot" / "domain"
+FORBIDDEN = {"flask", "langchain", "openai", "dotenv", "os", "pathlib", "json"}
+IMPORT_LINE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z0-9_.]+)")
+ERROR_NAMES = ("ApiKeyMissing", "InvalidApiKey", "InvalidMessage", "InvalidSession", "UpstreamError")
+PORTS = (MemoryRepository, ChatModel, ApiKeyStore)
+
+
+def domain_files() -> list[Path]:
+    return sorted(DOMAIN_DIR.rglob("*.py"))
+
+
+def top_module(line: str) -> str:
+    khop = IMPORT_LINE.match(line)
+    if khop is None:
+        return ""
+    return khop.group(1).lstrip(".").split(".")[0]
+
+
+def test_domain_has_files() -> None:
+    assert domain_files(), "không tìm thấy tệp trong src/chatbot/domain"
+
+
+@pytest.mark.parametrize("duong_dan", domain_files(), ids=lambda p: p.name)
+def test_no_forbidden_import(duong_dan: Path) -> None:
+    for so_dong, dong in enumerate(duong_dan.read_text(encoding="utf-8").splitlines(), 1):
+        if not dong.strip().startswith(("import ", "from ")):
+            continue
+        assert top_module(dong) not in FORBIDDEN, f"{duong_dan.name}:{so_dong} import bị cấm"
+
+
+@pytest.mark.parametrize("duong_dan", domain_files(), ids=lambda p: p.name)
+def test_file_under_100_lines(duong_dan: Path) -> None:
+    dong = duong_dan.read_text(encoding="utf-8").splitlines()
+    assert len(dong) < 100, f"{duong_dan.name} vượt 100 dòng"
+
+
+@pytest.mark.parametrize("ten", ERROR_NAMES)
+def test_errors_inherit_base(ten: str) -> None:
+    module = __import__("src.chatbot.domain.errors", fromlist=[ten])
+    lop = getattr(module, ten)
+    assert issubclass(lop, ChatbotError) and issubclass(lop, Exception)
+
+
+@pytest.mark.parametrize("port", PORTS, ids=lambda p: p.__name__)
+def test_ports_cannot_be_instantiated(port: type) -> None:
+    with pytest.raises(TypeError):
+        port()
+
+
+@pytest.mark.parametrize("ten", ["get", "append", "reset"])
+def test_memory_repository_is_abstract(ten: str) -> None:
+    assert ten in MemoryRepository.__abstractmethods__
+
+
+def test_chat_model_is_abstract() -> None:
+    assert "reply" in ChatModel.__abstractmethods__
+
+
+@pytest.mark.parametrize("ten", ["is_configured", "get", "save"])
+def test_api_key_store_is_abstract(ten: str) -> None:
+    assert ten in ApiKeyStore.__abstractmethods__
+```
+
+## 5.12. Sample PowerShell log
+
+```powershell
+PS C:\chatbot> py -m pytest -q tests\test_trim_history.py tests\test_domain_purity.py
+==================================== ERRORS ====================================
+_______________________ ERROR collecting tests/test_trim_history.py ______________________
+ImportError while importing test module 'tests/test_trim_history.py'.
+E   ModuleNotFoundError: No module named 'src.chatbot.domain'
+========================= short test summary info ===========================
+ERROR tests/test_trim_history.py
+ERROR tests/test_domain_purity.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+2 errors in 0.21s
+PS C:\chatbot> py -m pytest -q tests\test_trim_history.py tests\test_domain_purity.py
+========================= short test summary info ===========================
+FAILED tests/test_trim_history.py::test_keeps_original_order
+FAILED tests/test_trim_history.py::test_bad_limit_raises[0]
+FAILED tests/test_trim_history.py::test_does_not_mutate_input
+FAILED tests/test_trim_history.py::test_message_rejects_unknown_role
+4 failed, 53 passed in 0.51s
+PS C:\chatbot> py -m pytest -q tests\test_trim_history.py tests\test_domain_purity.py
+...............................................................              [100%]
+57 passed in 0.46s
+PS C:\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+PS C:\chatbot>
+```
+
+The sample log must show exactly three states: RED (domain files do not exist yet, collection error), RED (assertion error), GREEN (all tests), then silence when checking the 100-line rule.
+
+# 6. Notices:
+
+- Do NOT import `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json` in `domain/`, because `test_no_forbidden_import` scans every import line and will go red immediately.
+- Do NOT use raw string comparison to scan imports in tests, for example the style `word in dong`, because `from ..ports import x` or `close` will be misdetected as `os` and cause a false red.
+- Do NOT let `domain/` depend back on `application/` or `infrastructure/`, because the dependency arrow is interface → application → domain.
+- Do NOT use a non-frozen dataclass for `Message`, because the conversation history will be modified unintentionally and the trim order will be wrong.
+- Do NOT accept the role `"system"` in `Message`, because the system prompt travels separately through the separate parameter of `reply`.
+- Do NOT trim `content` whitespace in `Message` yourself, because trimming belongs to `validate_message` in the application layer.
+- Do NOT return the very same list reference passed in from `trim_history`, because the no-mutation-input case would be violated as soon as the caller appends.
+- Do NOT accept negative or zero `limit` and return an empty list, because the mandatory rule is to throw `ValueError`.
+- Do NOT treat `bool` as a valid `limit`, because `True` is understood as 1 and skews the number of trimmed messages.
+- Do NOT instantiate `MemoryRepository`, `ChatModel`, `ApiKeyStore` directly in domain tests, because all three are abstract classes.
+- Do NOT merge or rename `errors.py`, because B2 locks that exact file name and the layer above imports by that name.
+- Do NOT type `UpstreamError.status` as a string, because the route uses it as an integer status code.
+- Do NOT write tests for LangChain or Flask behaviour in this layer, because those belong to P5 and P6.
+- Do NOT use time-based wait commands in tests, because testing must be deterministic and green in under 10 seconds.
+- Do NOT assert key order in `FakeMemoryRepository`, because order is measured through the `calls` list.
+- Do NOT print the API key to the log or into the fake's representation, because the key lives only in the `.env` file and process memory.
+- Do NOT write Vietnamese strings without diacritics in `ValueError` messages, because that is what the learner reads in PowerShell.
+- Do NOT create files beyond 4.1, because the 100-line check and `test_domain_purity` scan the whole tree.
+- Do NOT run the server inside opencode's shell at P3, because `run.py` and the route belong to P6 and must be started with `Start-Process`.
+- KILL: stop after 3 fix rounds and report the reason, because continuing to a 4th round is a waste and hides the root cause.
+
+
+Binding rule B24: every coding prompt must include an explicit resume protocol for when opencode stops midway. State the re-paste rule — the user re-pastes the original prompt plus a short status note (files changed, last step attempted) and work resumes without re-exploring completed steps — and define a checkpoint-by-tests rule requiring that after each meaningful unit of work the agent runs the existing test suite or adds a failing-then-passing test, so progress is verifiable and re-runnable from the last green checkpoint. If the agent restarts, it must first inspect the working tree and run the tests to locate the last passing checkpoint before continuing. Acceptance: a reviewer can take any governed prompt, simulate a mid-task stop, re-paste it with a two-line status, and confirm the resumed run continues from the last green test checkpoint without repeating completed steps.
+# 7. Input:
+
+The learner must provide the following before doing P3:
+
+- The exact directory tree currently inside `C:\chatbot\src\chatbot\`, which is the result of `Get-ChildItem -Recurse C:\chatbot\src`, so it is known which files already exist and which files must be created new.
+- The content of `requirements.txt` and `pytest.ini` created in P1; if they do not exist, create a minimal `pytest.ini` yourself with `testpaths = tests` and `pythonpath = .` so that the command `from src.chatbot.domain.message import Message` can run.
+- The finalized B4 draft consisting of Message, trim_history, errors and the three ports, pasted verbatim into the opencode chat box so that class names, function names and file names match exactly.
+- A screenshot of the RED `py -m pytest -q` run before writing the code, if one already exists.
+
+The API key must NOT be pasted into the opencode chat box, must NOT be written into code, must NOT be written into test files, must NOT be written into `.env` by hand. Key entry happens on the chatbot page on the first run: the MUI dialog "Nhập khóa API" sends `POST /api/setup`, and the server writes it into `.env`. Within the P3 scope, the domain layer only declares the `ApiKeyStore` port; it does not read, write or check the key.
+
+If any file in 4.1 is missing, opencode creates exactly the sample content in section 5 by itself and then continues, without asking again.
+
+# 8. OKRs (O + KRs):
+
+O: Finish the domain layer of the web chatbot, consisting of Message, trim_history, the error tree and the three ports, with boundary tests written first, all tests green, and no violation of the 100-line rule.
+
+- KR1: `py -m pytest -q tests\test_trim_history.py tests\test_domain_purity.py` reports `57 passed`, with no `failed` and no `error`.
+- KR2: There are exactly 15 files in the table of 4.1, none missing and no strange file added outside the B2 tree.
+- KR3: The 100-line check command prints NOT A SINGLE file name in `src\chatbot\domain\` and `tests\`.
+- KR4: `test_no_forbidden_import` scans all 8 `.py` files of `domain/` and finds no `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json` on any import line.
+- KR5: `trim_history` is correct for lengths 0, 1, 5, 6, 12 when `limit=5`; message order is preserved; `limit` equal to 0, negative, `True` or a string all throw `ValueError`.
+- KR6: `Message` throws `ValueError` for the roles `system`, `HUMAN`, `assistant`, empty, `None`, a number; and for content that is empty, all whitespace, `None`, a number.
+- KR7: `trim_history` does not change the passed-in list and returns a list that is a different reference, verified with `assert ket_qua is not danh_sach_goc`.
+- KR8: All 5 errors in `errors.py` are subclasses of `ChatbotError`, verified with `issubclass` for each name in a parametrized case.
+- KR9: Directly instantiating the three ports all throw `TypeError`, and the `__abstractmethods__` set of each port matches exactly the function list in 4.2.
+- KR10: Scanning the whole tree for secrets with `Get-ChildItem -Recurse -Include *.py | Select-String -Pattern 'sk-' -SimpleMatch` prints no line; a sample key, if needed, only uses the prefix `TEST_KEY_` followed by 20 `x` characters, namely `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`.
+- KR11: One `py -m pytest -q` run for the two test files finishes in under 10 seconds and uses no time-wait command.
+- KR12: The final report prints all four blocks: the file table, the RED run with the `short test summary info` block, the GREEN run, and the cross-check table of B9 cases with test names and the conclusion `XANH`.
+- KR13: Every Vietnamese string in the code and in the report has full diacritics; no string begins with a stray double space followed by a replacement character.
+- KR14: At most 3 fix rounds before stopping; if stopping, the report includes the still-red `short test summary info` verbatim and the reason.
+

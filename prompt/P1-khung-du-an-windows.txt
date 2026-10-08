@@ -1,0 +1,1337 @@
+PROMPT P1: Windows 11 project skeleton, venv, requirements, pytest. Paste the WHOLE text below into opencode in order P0 to P9; paste P1 only after all earlier prompts are green.
+
+# 1. Role:
+
+Senior software engineer and Python course instructor for beginners, specializing in the project skeleton, virtual environment, dependency management and test infrastructure on Windows 11. This instructor has 12 years of Django and Flask project experience, has taught 2,000 learners the fundamentals of web programming, and is famous for never letting a learner get stuck at the installation step. The instructor writes formal specification with full Vietnamese diacritics, using the mathematical notation ∀ ∃ ⇒ ∧ ∨ := to tightly constrain every testable condition. The instructor values the one-function-per-file principle, each file under 100 lines, so that other people can read and fix the code without opening overly long files. The instructor does not use bash commands on Windows, only PowerShell, and always invokes the Python interpreter with the command `py`. The instructor absolutely never asks learners to run the server inside the opencode command window; every trial run happens in a separately opened PowerShell. The instructor explains by cause, not by command alone, so that learners understand why each configuration file exists.
+
+# 2. Context (5W1H):
+
+- **What (what):** This prompt P1 builds the entire empty project skeleton for the web chatbot: the directory tree exactly according to blueprint B2, the virtual environment `.venv`, the file `requirements.txt`, the file `pytest.ini`, the file `.gitignore`, the sample file `.env.example`, and the empty `tests` directory waiting for tests. Not a single line of Python code has been written yet, there is no route yet, no interface yet. The goal is that `py -m pytest -q` runs and returns code 0 or code 5 because there are no tests yet.
+- **Why (why):** Because learners stop right at the installation step if the project skeleton is wrong. A wrong directory makes every later prompt have wrong paths. A wrong `pytest.ini` means `py -m pytest -q` cannot find `src` and tests cannot import the source code. Forgetting `.env` in `.gitignore` means the learner's API key may end up in a public code repository. A wrong venv procedure means libraries get installed into the system Python and, later, on other machines, break other people's environments.
+- **Who/Where (who and where):** Beginner learners who have never built a Python project on Windows, studying on Windows 11, using PowerShell, typing `py` to run Python. The project is located in the `chatbot` directory; the instructor requires learners to choose a directory with NO spaces and that is NOT inside OneDrive.
+- **When (when):** Prompt P1 is the second prompt in the chain of ten prompts, running immediately after P0 (writing `AGENTS.md`) and before P2 (writing `config`), P3 (writing `domain`), up to P9 (debugging and acceptance). P1 must be finished before reading P2, because P2 writes code into `src/chatbot/config`, exactly the directory that P1 creates.
+- **How (how):** The mandatory sequence is: create the directory tree, write four text configuration files, create the virtual environment, install the libraries, confirm `py -m pytest -q`. Each step comes with one verifiable PowerShell command and one green criterion. All commands run in regular PowerShell, not in the opencode shell.
+- **Prompt shape (prompt form):** This is part A of a long prompt, consisting of role, context and formal spec 3a plus glossary 3b. The system will insert the shared BLUEPRINT verbatim after section 3b, then append part B with the execution steps, decision table and complete sample code. The reader must grasp PRE, POST, INV before reading part B.
+- **Constraints (restrictions):** Use only PowerShell on Windows 11. Invoke Python with `py`. Do not use bash commands, do not use `python3`, do not use `sudo`, do not use `curl`. The `.env` file is written later by P2 and `/api/setup`; P1 only creates `.env.example` with the API key placeholder `PUT-YOUR-KEY-HERE`. Never write a real API key into any file, never write a string beginning with `sk-`. The sample key in the test example must be `TEST_KEY_` followed by twenty x's. Every text file is written in UTF-8 with LF line endings so that reading stays consistent.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE:
+
+- PRE.1 `PowerShell`: every command in part B runs in PowerShell. Verify with `echo $PSVersionTable.PSVersion` printing major version 5 or above.
+- PRE.2 `py`: the `py` command must be in PATH before the first step. Verify with `py --version`. If PowerShell reports that it does not recognize `py`, stop immediately, create no file, handle per ERR.1.
+- PRE.3 `python_dung`: the version must be 3.10 or above. Verify with `py -c "import sys; assert sys.version_info >= (3,10), sys.version"`. If wrong, stop, handle per ERR.2.
+- PRE.4 `thu_muc_lam_viec`: the `chatbot` directory must exist. Verify with `Get-Location` and `Get-ChildItem -Force`.
+- PRE.5 `ten_thu_muc_sach`: the path name contains no space, no `#`, no `$`. Verify with `if ((Get-Location).Path -match '\s') { 'BAD_PATH' } else { 'PATH_OK' }`.
+- PRE.6 `khong_oneDrive`: the path is not located inside OneDrive. Verify with `if ((Get-Location).Path -match 'OneDrive') { 'BAD_ONEDRIVE' } else { 'PATH_OK' }`.
+- PRE.7 `khong_chay_may_chu`: in this prompt do NOT run `py run.py`, do not stand up Flask, do not open any port. The file `run.py` is in the scope of P6, do not create it at P1.
+- PRE.8 `khong_khoa_that`: there is no real API key yet. Every key value in `.env.example` is the text `PUT-YOUR-KEY-HERE`. Verify by reading the content and then comparing, printing `KEY_PLACEHOLDER_OK`.
+- PRE.9 `ma_nguon_sach_truoc`: no `.py` file exists yet in `src`, so the directory tree created at P1 contains only an empty `__init__.py` and empty directories.
+- PRE.10 `khong_co_file_khoa`: the real `.env` file does NOT exist yet at P1. P2 and `/api/setup` will create it. Verify with `Test-Path .env` must return `False` and this is the CORRECT result.
+- PRE.11 `ten_goi_phan_tich`: do not run any code analysis tool at P1, because there is no code yet. Enforcing one-function-per-file belongs to P2 onward.
+- PRE.12 `mo_quyen_ghi`: you have write permission in the `chatbot` directory. Verify with `New-Item -ItemType File -Path probe.tmp -Force; Remove-Item probe.tmp`.
+
+POST:
+
+- POST.1 `cay_thu_muc`: exactly the directory tree at B2 exists, comprising `src/chatbot` with the subdirectories `config`, `domain`, `domain/ports`, `application`, `infrastructure`, `interface`, `interface/routes`, `static`, `static/js`, `tests`, `tests/fakes`. Verify with the path-counting command `Get-ChildItem -Recurse -Directory`.
+- POST.2 `init_rong`: every `__init__.py` file exists and has 0 lines. Verify with `Get-ChildItem -Recurse -Filter __init__.py | ForEach-Object { "$($_.FullName): $((Get-Content $_.FullName | Measure-Object -Line).Lines)" }`, every line must be `0`.
+- POST.3 `requirements`: the `requirements.txt` file contains exactly five packages: `flask`, `langchain-core`, `langchain-openai`, `python-dotenv`, `pytest`, one package per line, optionally followed by `==` and a version number. Verify by reading the file and matching line by line.
+- POST.4 `pytest_ini`: the `pytest.ini` file has `pythonpath=src` and `testpaths=tests`. Verify with `Get-Content pytest.ini`.
+- POST.5 `gitignore`: the `.gitignore` file has all the entries `.env`, `.venv`, `memory.json`, `__pycache__`, `*.pyc`, `memory.json.corrupt-*`. Verify with the command `Select-String -Path .gitignore -Pattern '^\\.env$'`.
+- POST.6 `env_example`: the `.env.example` file has all nine keys at B3: `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_TEMPERATURE`, `OPENAI_TIMEOUT`, `HOST`, `PORT`, `MEMORY_FILE`, `MAX_MESSAGES`, `SYSTEM_PROMPT_FILE`. Verify with `Select-String -Path .env.example -Pattern '^[A-Z_]+=' ` counting 9 matching lines.
+- POST.7 `env_example_an_toan`: in `.env.example`, the line `OPENAI_API_KEY=` contains exactly the text `PUT-YOUR-KEY-HERE`, with no string beginning with `sk-`. Verify with the command counting lines matching the pattern `^sk-`, the mandatory result is `0`.
+- POST.8 `venv`: the `.venv` directory exists and has the file `Scripts/python.exe`. Verify with `Test-Path .venv\Scripts\python.exe`, the result must be `True`.
+- POST.9 `cung_cap_thu_vien`: the command `py -m pip show flask langchain-core langchain-openai python-dotenv pytest` prints all five package names with versions. Verify with that command, do not use another command.
+- POST.10 `pytest_chay`: `py -m pytest -q` finishes without error. The acceptable exit code is 0 (tests exist) or 5 (no tests yet). Verify with `$LASTEXITCODE` after running, the value must belong to the set {0, 5}.
+- POST.11 `tests_rong`: the `tests` directory has no `test_*.py` file at the last step of P1. Verify with `(Get-ChildItem tests -Filter 'test_*.py' -Recurse).Count` must equal `0`.
+- POST.12 `chua_khoa_that`: no file in the project contains a real API key. Verify with the recursive scan command searching for the pattern `sk-`, the mandatory result is `0` matching lines.
+- POST.13 `khong_co_file_thua`: no junk files are generated outside the list at B2. Verify with `Get-ChildItem -Recurse -File -Exclude * | Where-Object { $_.FullName -notmatch '\\.venv\\|__pycache__' }` and compare against the allow list.
+- POST.14 `khong_sua_agents_md`: the `AGENTS.md` file created by P0 stays intact, P1 does not touch it. Verify with `Test-Path AGENTS.md` must be `True`.
+
+INV:
+
+- INV.1 `mot_ham_mot_tep`: each function or each class lives in exactly one separate file. At P1 there is no function yet, but this rule is a constraint for every later prompt: from P2 onward each `.py` file contains only one business unit.
+- INV.2 `duoi_100_dong`: every `.py` file and every `.js` file is under 100 lines, counting test files as well. At P1 the text files `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` are all under 30 lines.
+- INV.3 `DDD`: the DDD (Domain-Driven Design, design based on the business domain) principle ⇒ dependency arrows travel in one direction only interface → application → domain, and infrastructure → domain. `domain` must not install any library, not even `json` and `os`. P1 creates all directories in advance for this rule.
+- INV.4 `TDD`: the TDD (Test-Driven Development, test-driven development) principle ⇒ every function from P2 onward is written after a red test file. Therefore `tests` and `tests/fakes` must exist right from P1, even though there is no test file yet.
+- INV.5 `khong_lo_khoa`: the API key never appears in logs, in HTTP responses, in error messages, in conversation memory, or in any file other than `.env`. P1 only creates `.env.example` with the filler text `PUT-YOUR-KEY-HERE`.
+- INV.6 `cau_hinh_qua_settings`: every configuration value is read from the `.env` file through the frozen `Settings` class, not read scattered throughout the code. P1 prepares `.env.example` as the template source and `.gitignore` so that the real `.env` is not tracked.
+- INV.7 `pythonpath_src`: every `py -m pytest -q` command must be able to load `src/chatbot` without installing a package. Therefore `pytest.ini` must have `pythonpath=src`.
+- INV.8 `testpaths_tests`: pytest scans only `tests`, it does not scan `.venv`. Therefore `pytest.ini` must have `testpaths=tests`.
+- INV.9 `goi_py`: every command invoking the Python interpreter begins with `py`, absolutely never bare `python`, `python3`, `pip`. The reason: on Windows, the `py` command always points to the newest Python bootstrap installed through Microsoft Store or the official installer.
+- INV.10 `chi_powershell`: every command in part B is PowerShell. No command resembles a bash command. For arithmetic or counting, use `Measure-Object`, `Select-String`, `Where-Object`.
+- INV.11 `khong_chay_may_chu`: do NOT run `py run.py` in the opencode command window. Every time the server must be run in part B or P8, use `Start-Process` to open a separate PowerShell window.
+- INV.12 `venv_co_lan`: `.venv` is located inside the project directory, no venv in the parent directory or the user directory, so that each project has its own separate environment.
+- INV.13 `venv_ten_dung`: the environment directory is named exactly `.venv` so that it matches `.gitignore` and the convention at B11.
+- INV.14 `khong_xoa_venv`: if `.venv` already exists from a previous run, do NOT delete it, do NOT recreate it from scratch. Only check integrity.
+- INV.15 `nguon_utf8_lf`: every text file created by P1 is UTF-8 encoded, uses LF line endings, and has a trailing period at end of line. Do not use UTF-8 with BOM.
+- INV.16 `khong_ghi_vao_goc_may`: do not write to `C:\Windows`, do not write to `C:\Program Files`, no administrator rights needed. The entire set of changes stays inside the project directory.
+- INV.17 `khong_goi_ra_ngoaii`: `run.py` and `main.js` are in the scope of P6 and P7. P1 does not create them, does not write preliminary content, does not leave empty files that cause confusion.
+- INV.18 `env_9_khoa_dung_ten`: the key names in `.env.example` are written in exact uppercase and in the exact order of table B3, because P2 will read exactly these names.
+- INV.19 `moi_ten_mot_tep`: each fake file in `tests/fakes` will be a separate file written by P3 through P5, so P1 only creates the empty `fakes` directory.
+- INV.20 `test_khong_phu_thuoc_thu_tu`: the pytest configuration must not force file order. Later test files may run before earlier files and still be correct.
+- INV.21 `khong_phu_thuoc_thu_vien_ngoai`: the installation round must install all five packages at POST.9, because `langchain-core` and `langchain-openai` are two separate packages, and a missing package means P5 cannot build `ChatOpenAI`.
+- INV.22 `ma_thoat_pytest`: pytest's exit code 5 is accepted at the last step of P1, because the `tests` directory is still empty. Every other exit code, including 1, 2, 3, 4, together with the `config` syntax error, is a violated invariant and must be handled before moving to P2.
+- INV.23 `khong_bien_dich_xoa`: each step in part B is one PowerShell command block, and only after it finishes do you move to the next block. Do not merge multiple blocks to save time.
+- INV.24 `cau_hoi_va_loi_ai`: if a command in part B returns a result different from the standard stated at POST, stop right at that step, print the real result, and fix it according to the decision table in part B before going further.
+- INV.25 `ban_giao_doc_lap`: after P1 is done, the `chatbot` directory must be a runnable Python project, readable with `py -m pytest -q`, and every path correctly named so that from P2 onward code is written into the right place without needing to recreate directories.
+
+## 3b. Short glossary
+
+- **opencode**: a programming helper that runs in the command window, reads the project code, receives requests in text, then creates or edits files. In this course opencode is the executor, while the learner is the reader and checker of the result.
+- **API**: Application Programming Interface, a programming interface that lets one program call the functions of another program over the network. Here the API is a conversational-response service, and the "API key" is the secret code proving you are permitted to call that service.
+- **endpoint**: a specific URL path on the server that a program can call, for example `/api/health`. Each endpoint accepts an HTTP method and returns a status code together with JSON content.
+- **venv**: virtual environment, meaning a separate directory containing a copy of the Python interpreter and the libraries of that project alone, so that the project's libraries do not get mixed with the system libraries.
+- **pytest**: an automated test framework for Python, reading `test_*.py` files, running each test function, then reporting how many passed and failed; it returns exit code 0 when everything passes.
+- **DDD**: Domain-Driven Design, a way of designing software split into domain (pure business logic), application (orchestration), infrastructure (communicating with the outside world) and interface (the interface that receives requests), such that dependency arrows travel in one direction only and the business part does not depend on libraries.
+- **TDD**: Test-Driven Development, a way of writing code in the order red, green, refactor: write a failing test file first, write the minimal code to make the test turn green, and only then streamline the code.
+- **MUI**: Material UI, a component library for React, providing ready-made views such as chat boxes, input boxes, buttons and top bars, so the interface can be built without writing CSS from scratch.
+- **formal spec**: formal specification, a way of writing requirements with clearly defined conditions using premises PRE, postconditions POST and invariants INV, so that every requirement can be verified by a command or by a test instead of depending on the reader's interpretation.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation process (TDD)
+
+PRE (precondition, every statement below holds only when PRE holds):
+
+- PRE.1 The platform is Windows 11, PowerShell, the code editor is opencode, BLUEPRINT v4 has been read, and the `AGENTS.md` produced by P0 has been read.
+- PRE.2 The project directory does not exist yet, or the project directory is empty; there is no `.venv`, no `requirements.txt`, no `pytest.ini`, no `tests`.
+- PRE.3 The seven rules in `AGENTS.md` have been loaded: one function per file, each file under 100 lines, no real keys in source code, `innerHTML` forbidden, domain imports no framework, PowerShell only, every sample key in tests uses the `TEST_KEY_` prefix.
+- PRE.4 The only verification command used to conclude green for P1 is `py -m pytest -q`, run from the project root directory.
+- PRE.5 No file belonging to the P2 to P9 scope exists yet, not even an empty file. P1 must not pre-create empty files with the wrong signature.
+
+INV (invariants, must be preserved in every step):
+
+- INV.1 P1 does NOT create any `.py` or `.js` file belonging to the P2 to P9 scope, not even an empty file, except the eight empty `__init__.py` files permitted by section B2.
+- INV.2 The files P1 owns are exactly the four files at the project root: `pytest.ini`, `requirements.txt`, `.gitignore`, `.env.example`, together with the empty directory tree and the eight empty `__init__.py` files.
+- INV.3 `.env` must NOT be created in P1. A missing `.env` is valid, see section B3.
+- INV.4 No file created by P1 exceeds 100 lines, including temporary test files and files produced during cleanup.
+- INV.5 No string in any tracked file begins with the provider key prefix. Such a string may only be built by concatenation, for example `PREFIX = "s" + "k-"`.
+- INV.6 Sample keys in all tests use exactly the form `TEST_KEY_` followed by 20 x characters, 29 characters in total.
+- INV.7 At the end of P1, the command `py -m pytest -q` returns exit code 5 because no test is collected, and this is a PASS result, not an error.
+- INV.8 The whole directory tree after P1 must match the directory list of section B2, no extras and no omissions.
+- INV.9 Every text file created by P1 must be readable back with `encoding="utf-8"` and saved with the LF end-of-line character, see section B13.
+- INV.10 The interpreter command throughout P1 is `py`, not the full interpreter name.
+- INV.11 If opencode stops midway through P1, resume by re-pasting the source from the last checkpoint: a checkpoint is the last step whose tests are green, so re-paste from that step heading onward and continue from there. Before continuing, run `py -m pytest -q` from the project root directory to re-establish the checkpoint state, and never invent state that the tests do not confirm.
+
+POST (postcondition): exactly the four root files listed in INV.2 exist with the settled content, thirteen subdirectories exist, the eight `__init__.py` files are byte-empty, no temporary test file remains, the 100-line rule is green, `.gitignore` blocks `.env` but does not block `.env.example`, `py -m pytest -q` returns code 5.
+
+### Table 3c-1. Terminology, defined exactly once
+
+| Term | Definition used in P1 |
+|---|---|
+| opencode | programming assistant running in the command-line window, the place where every P1 file is produced |
+| API | programming interface of an external service, where the chatbot obtains the model's answer |
+| endpoint | specific URL path the web server answers, for example `/api/health` |
+| venv | virtual environment directory holding a private copy of the libraries for the project, the directory name is `.venv` |
+| pytest | automated testing tool for Python, run with the command `py -m pytest -q` |
+| TDD | the discipline of writing tests first, making the test red, making the minimal fix to turn it green, then cleaning up the code |
+| DDD | the discipline of layering by business role, applied from P2 onward |
+| MUI | the Material UI component library loaded from a CDN, in the P7 scope |
+| formal spec | specification text using the blocks PRE, POST, INV, ERR, KILL and the logic symbols ∀ ∃ ⇒ ∧ ∨ := |
+
+### LOOP 0. Environment infrastructure (not a TDD loop, because pytest is needed before a test can be written)
+
+Step 1. Check the interpreter.
+- Files to create: none, this step only reads the machine state.
+- PowerShell verification command: `py --version` then `py -c "import sys; print(sys.version_info[:2])"`.
+- Algorithm: `IF` the `py` command returns a code other than 0 `THEN` stop per ERR.1; `ELSE IF` the printed pair is less than `(3, 10)` `THEN` stop per ERR.2; `ELSE` record the pair in the log and continue.
+- Expected result: prints a pair greater than or equal to `(3, 10)`.
+
+Step 2. Create the venv.
+- Files to create: the `.venv` directory and the directory tree inside it.
+- Command: `Test-Path .\.venv` then `py -m venv .venv`.
+- Algorithm: `IF` `Test-Path` returns `$True` `THEN` do NOT recreate, keep the old venv, note it in the log and move on per ERR.5; `ELSE` run `py -m venv .venv`.
+- PowerShell verification command: `Test-Path .\.venv\Scripts\Activate.ps1` must return `$True`.
+- Expected result: the activation file exists.
+
+Step 3. Enable execution permission for the current session.
+- Files to create: none.
+- Command: `Set-ExecutionPolicy -Scope Process Bypass -Force` then `.\.venv\Scripts\Activate.ps1`.
+- UNVERIFIED note: on Windows 11 Home, `Set-ExecutionPolicy` is sometimes overridden by an enterprise policy or Group Policy, so it must be labelled UNVERIFIED until it is actually run on the learner's machine.
+- Algorithm: `IF` activation fails with `UnauthorizedAccess` `THEN` apply ERR.3; `ELSE` confirm that `$env:VIRTUAL_ENV` contains the string `.venv`, then consider it successful.
+- Expected result: the command-line prompt prefix changes to `(.venv)`.
+
+Step 4. Install a minimal pytest so that the test runner exists.
+- Files to create: none.
+- Command: `py -m pip install --upgrade pip` then `py -m pip install pytest`.
+- PowerShell verification command: `py -m pytest --version` must print a version number.
+- Expected result: prints a version number, for example `8.3.3`.
+- Note on redundancy: `requirements.txt` is the output of LOOP 2, and LOOP 2 needs pytest to run the red test, so LOOP 0 must install pytest independently. This redundancy is accepted and stated in POST.
+
+### LOOP 1. THE `pytest.ini` FILE
+
+Contract: `read_ini() -> dict[str, str]` returns the key and value pair of every `key = value` line, skipping blank lines, lines starting with `#`, and lines starting with `[`.
+
+Step 5. RED loop: create `tests/test_probe_01_pytest_ini.py`.
+
+```python
+"""P1 kiểm chứng 01: kiểm tra pytest.ini. Tệp tạm, xóa ở vòng DỌN."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+INI = ROOT / "pytest.ini"
+
+
+def read_ini() -> dict[str, str]:
+    """Trả về cặp khóa và giá trị, bỏ qua dòng trống, chú thích và tiền đoạn."""
+    values: dict[str, str] = {}
+    for raw in INI.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith(("#", ";", "[")):
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def test_pytest_ini_sets_pythonpath_and_testpaths():
+    values = read_ini()
+    assert values.get("pythonpath") == "src"
+    assert values.get("testpaths") == "tests"
+
+
+def test_pytest_ini_declares_section_and_strict_markers():
+    text = INI.read_text(encoding="utf-8")
+    assert "[pytest]" in text
+    assert "--strict-markers" in text
+    assert "python_files = test_*.py" in text
+```
+
+Step 6. Run red.
+- Command: `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: failure with `FileNotFoundError` pointing at `pytest.ini`, exit code 1. If the test is green right at this step then KILL.10 is violated.
+
+Step 7. GREEN loop: create `pytest.ini` with exactly the content below.
+
+```text
+[pytest]
+pythonpath = src
+testpaths = tests
+python_files = test_*.py
+python_classes = Test*
+python_functions = test_*
+addopts = --strict-markers
+```
+
+- Constraint algorithm: `FOR` each configuration line `IF` the key is in the set `pythonpath, testpaths, python_files, python_classes, python_functions, addopts` `THEN` keep it as is; `ELSE` remove it.
+
+Step 8. REFACTOR loop.
+- PowerShell verification command: `Get-Content .\pytest.ini` to inspect, then `py -m pytest -q; $LASTEXITCODE`.
+- Constraint algorithm: `FOR` each line `IF` it has a `\r` character at the end `THEN` re-save it with the LF end-of-line character; `ELSE` keep it as is.
+- Expected result: 2 tests green, exit code 0.
+- Check the 100-line rule: use the PowerShell command in section B11 with the path `.\pytest.ini`, it must print nothing.
+
+### LOOP 2. THE `requirements.txt` FILE
+
+Contract: exactly five packages, one package per line, exactly one `==` per line, no blank line in the middle of the file.
+
+Step 9. RED loop: create `tests/test_probe_02_requirements.py`.
+
+```python
+"""P1 kiểm chứng 02: kiểm tra requirements.txt. Tệp tạm, xóa ở vòng DỌN."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+REQUIRED = {
+    "flask",
+    "langchain-core",
+    "langchain-openai",
+    "python-dotenv",
+    "pytest",
+}
+
+
+def read_packages() -> list[str]:
+    """Trả về danh sách dòng gói, bỏ dòng trống và dòng chú thích."""
+    path = ROOT / "requirements.txt"
+    lines = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            lines.append(line)
+    return lines
+
+
+def test_requirements_declares_exactly_five_packages():
+    names = {line.split("==")[0].strip().lower() for line in read_packages()}
+    assert names == REQUIRED
+
+
+def test_every_requirement_is_pinned_exactly():
+    for line in read_packages():
+        assert line.count("==") == 1, line
+```
+
+Step 10. Run red.
+- Command: `py -m pytest -q tests/test_probe_02_requirements.py`.
+- Expected result: `FileNotFoundError` because `requirements.txt` does not exist yet.
+
+Step 11. GREEN loop: create `requirements.txt`.
+
+```text
+flask==3.0.3
+langchain-core==0.3.9
+langchain-openai==0.2.2
+python-dotenv==1.0.1
+pytest==8.3.3
+```
+
+- UNVERIFIED note: the version numbers above are only reasonable starting points at the time the blueprint was written; they must be checked against the package index on the learner's machine, and handled per ERR.9 if not found.
+
+Step 12. Install and cross-check.
+- Command: `py -m pip install -r requirements.txt` then `py -m pip list`.
+- Algorithm: `FOR` each package of the five packages `IF` `pip list` has no matching line `THEN` treat it as not installed and apply ERR.4; `ELSE` mark the package as present.
+- Expected result: all five packages appear in the list, installed into the correct venv.
+
+Step 13. REFACTOR loop.
+- Command: `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: 4 tests green, exit code 0.
+
+### LOOP 3. THE DIRECTORY TREE AND THE EIGHT `__init__.py` FILES
+
+Contract: thirteen subdirectories taken verbatim from section B2, eight byte-empty `__init__.py` files.
+
+Step 14. RED loop: create `tests/test_probe_03_tree.py`.
+
+```python
+"""P1 kiểm chứng 03: cây thư mục theo mục B2. Tệp tạm, xóa ở vòng DỌN."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_DIRS = [
+    "src",
+    "src/chatbot",
+    "src/chatbot/config",
+    "src/chatbot/domain",
+    "src/chatbot/domain/ports",
+    "src/chatbot/application",
+    "src/chatbot/infrastructure",
+    "src/chatbot/interface",
+    "src/chatbot/interface/routes",
+    "static",
+    "static/js",
+    "tests",
+    "tests/fakes",
+]
+NOT_PACKAGE_DIRS = {"src", "static", "static/js", "tests", "tests/fakes"}
+LATER_PROMPTS_OWN = ("run.py", "system-prompt.txt", "memory.json", ".env")
+
+
+def test_expected_directories_exist():
+    missing = [d for d in EXPECTED_DIRS if not (ROOT / d).is_dir()]
+    assert missing == []
+
+
+def test_package_markers_exist_and_are_empty():
+    for name in EXPECTED_DIRS:
+        if name in NOT_PACKAGE_DIRS:
+            continue
+        marker = ROOT / name / "__init__.py"
+        assert marker.is_file(), str(marker)
+        assert marker.read_text(encoding="utf-8").strip() == ""
+
+
+def test_no_file_owned_by_later_prompts_exists():
+    for name in LATER_PROMPTS_OWN:
+        assert not (ROOT / name).exists(), name
+```
+
+Step 15. Run red.
+- Command: `py -m pytest -q tests/test_probe_03_tree.py`.
+- Expected result: the first test is red because the directories do not exist yet.
+
+Step 16. GREEN loop.
+- Tree-building command (PowerShell, one block, no command outside PowerShell):
+
+```powershell
+$dirs = @(
+  "src\chatbot\config",
+  "src\chatbot\domain\ports",
+  "src\chatbot\application",
+  "src\chatbot\infrastructure",
+  "src\chatbot\interface\routes",
+  "static\js",
+  "tests\fakes"
+)
+foreach ($d in $dirs) { New-Item -ItemType Directory -Force -Path $d | Out-Null }
+$markers = @(
+  "src\chatbot\__init__.py",
+  "src\chatbot\config\__init__.py",
+  "src\chatbot\domain\__init__.py",
+  "src\chatbot\domain\ports\__init__.py",
+  "src\chatbot\application\__init__.py",
+  "src\chatbot\infrastructure\__init__.py",
+  "src\chatbot\interface\__init__.py",
+  "src\chatbot\interface\routes\__init__.py"
+)
+foreach ($m in $markers) { New-Item -ItemType File -Force -Path $m | Out-Null }
+```
+
+- Algorithm: `FOR` each element in `$dirs` `THEN` create the directory with overwrite permission; `FOR` each element in `$markers` `THEN` create an empty file, writing NO line into the `__init__.py` file.
+- PowerShell verification command: `py -m pytest -q tests/test_probe_03_tree.py`.
+- Expected result: 3 tests green.
+
+Step 17. REFACTOR loop.
+- Command: `Get-ChildItem -Recurse -Directory | Select-Object FullName` to cross-check by eye against section B2.
+- Note on version control: version control tools do not track empty directories, so if the project uses git, place an empty `tests/fakes/.gitkeep` file. This file does not violate the 100-line rule.
+- Expected result: exactly thirteen directories, no stray directories.
+
+### LOOP 4. THE `.gitignore` FILE
+
+Contract: `read_lines() -> list[str]` returns the whitespace-stripped lines, skipping blank lines and comment lines.
+
+Step 18. RED loop: create `tests/test_probe_04_gitignore.py`.
+
+```python
+"""P1 kiểm chứng 04: kiểm tra .gitignore. Tệp tạm, xóa ở vòng DỌN."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+REQUIRED_RULES = [
+    ".venv/",
+    ".env",
+    "memory.json",
+    "memory.json.corrupt-*",
+    "__pycache__/",
+    "*.pyc",
+    ".pytest_cache/",
+]
+FORBIDDEN_RULES = [".env*", "*.env", "*.json"]
+
+
+def read_lines() -> list[str]:
+    """Trả về danh sách quy tắc, bỏ dòng trống và dòng chú thích."""
+    path = ROOT / ".gitignore"
+    lines = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            lines.append(line)
+    return lines
+
+
+def test_gitignore_covers_required_rules():
+    lines = read_lines()
+    missing = [rule for rule in REQUIRED_RULES if rule not in lines]
+    assert missing == []
+
+
+def test_gitignore_does_not_swallow_env_example():
+    lines = read_lines()
+    for rule in FORBIDDEN_RULES:
+        assert rule not in lines, rule
+
+
+def test_env_is_ignored_but_env_example_is_not():
+    lines = read_lines()
+    assert ".env" in lines
+    assert ".env.example" not in lines
+```
+
+Step 19. Run red.
+- Command: `py -m pytest -q tests/test_probe_04_gitignore.py`.
+- Expected result: red because the file `.gitignore` is missing.
+
+Step 20. GREEN loop: create `.gitignore`.
+
+```text
+.venv/
+.env
+memory.json
+memory.json.corrupt-*
+__pycache__/
+*.pyc
+.pytest_cache/
+```
+
+- Constraint algorithm: every rule must be a specific file name, do NOT use a blanket pattern such as `.env*` because that pattern swallows the sample file `.env.example` which must be tracked.
+
+Step 21. REFACTOR loop.
+- Command: `Get-Content .\.gitignore` to inspect the line order, then `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: 7 tests green, exit code 0.
+
+### LOOP 5. THE `.env.example` FILE
+
+Contract: `parse() -> dict[str, str]` returns exactly nine keys, default values match section B3, the value of `OPENAI_API_KEY` is placeholder text and not a real key.
+
+Step 22. RED loop: create `tests/test_probe_05_env_example.py`.
+
+```python
+"""P1 kiểm chứng 05: kiểm tra .env.example. Tệp tạm, xóa ở vòng DỌN."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EXPECTED = {
+    "OPENAI_API_KEY": "PUT-YOUR-KEY-HERE",
+    "OPENAI_MODEL": "gpt-4o-mini",
+    "OPENAI_TEMPERATURE": "0.3",
+    "OPENAI_TIMEOUT": "30",
+    "HOST": "127.0.0.1",
+    "PORT": "2610",
+    "MEMORY_FILE": "memory.json",
+    "MAX_MESSAGES": "5",
+    "SYSTEM_PROMPT_FILE": "system-prompt.txt",
+}
+GOOD_TEST_KEY = "TEST_KEY_" + "x" * 20
+
+
+def parse() -> dict[str, str]:
+    """Trả về cặp khóa và giá trị của tệp mẫu."""
+    path = ROOT / ".env.example"
+    values = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def test_env_example_declares_nine_keys_with_defaults():
+    assert parse() == EXPECTED
+
+
+def test_placeholder_key_is_not_a_real_key():
+    value = parse()["OPENAI_API_KEY"]
+    assert value == "PUT-YOUR-KEY-HERE"
+    assert len(value) >= 20
+
+
+def test_sample_key_constant_follows_test_key_rule():
+    assert GOOD_TEST_KEY.startswith("TEST_KEY_")
+    assert GOOD_TEST_KEY.endswith("x" * 20)
+    assert len(GOOD_TEST_KEY) == 29
+```
+
+Step 23. Run red.
+- Command: `py -m pytest -q tests/test_probe_05_env_example.py`.
+- Expected result: red because the file `.env.example` is missing.
+
+Step 24. GREEN loop: create `.env.example`.
+
+```text
+OPENAI_API_KEY=PUT-YOUR-KEY-HERE
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.3
+OPENAI_TIMEOUT=30
+HOST=127.0.0.1
+PORT=2610
+MEMORY_FILE=memory.json
+MAX_MESSAGES=5
+SYSTEM_PROMPT_FILE=system-prompt.txt
+```
+
+- Note: `.env.example` is the SAMPLE file and is allowed to contain placeholder text. `.env` is the REAL file produced by `POST /api/setup` at P6 and must absolutely not be created in P1.
+
+Step 25. REFACTOR loop.
+- Command: `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: 10 tests green, exit code 0.
+
+### LOOP 6. LEAKED KEY SCAN AND THE 100-LINE RULE
+
+Step 26. RED loop: create `tests/test_probe_06_scan.py`.
+
+```python
+"""P1 kiểm chứng 06: quét khóa lọt và tệp vượt 100 dòng."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+KEY_PREFIX = "s" + "k-"
+SKIP_DIRS = {".venv", "__pycache__", ".pytest_cache", ".git"}
+SCAN_NAMES = {".py", ".js", ".md", ".txt", ".ini", ".example"}
+LIMIT = 100
+
+
+def tracked_files() -> list[Path]:
+    """Trả về danh sách tệp cần quét, bỏ qua thư mục sinh tự động."""
+    files = []
+    for path in ROOT.rglob("*"):
+        if not path.is_file():
+            continue
+        if set(path.relative_to(ROOT).parts) & SKIP_DIRS:
+            continue
+        if path.suffix in SCAN_NAMES:
+            files.append(path)
+    return files
+
+
+def test_no_provider_key_prefix_in_tracked_files():
+    for path in tracked_files():
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        assert KEY_PREFIX not in text, str(path)
+
+
+def test_every_python_and_js_file_under_100_lines():
+    for path in tracked_files():
+        if path.suffix not in {".py", ".js"}:
+            continue
+        count = len(path.read_text(encoding="utf-8").splitlines())
+        assert count < LIMIT, f"{path} có {count} dòng"
+
+
+def test_gitignore_present_and_env_absent():
+    assert (ROOT / ".gitignore").is_file()
+    assert not (ROOT / ".env").exists()
+```
+
+Step 27. Run red.
+- Command: `py -m pytest -q tests/test_probe_06_scan.py`.
+- Expected result: red because `test_gitignore_present_and_env_absent` or `test_no_provider_key_prefix_in_tracked_files` does not hold at the moment of writing. If green right away then apply KILL.10.
+
+Step 28. GREEN and REFACTOR combined.
+- Command: `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: 13 tests green, exit code 0.
+
+### LOOP 7. CROSS-CHECK OF FILE NAMES AND THE DIRECTORY TREE AGAINST SECTION B2
+
+Contract: `package_markers() -> list[str]` returns the relative path of every `.py` file under `src`, using forward slashes.
+
+Step 29. RED loop: create `tests/test_probe_07_ownership.py`.
+
+```python
+"""P1 kiểm chứng 07: đối chiếu cây thư mục và quyền sở hữu tệp theo mục B2."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_MARKERS = [
+    "src/chatbot/__init__.py",
+    "src/chatbot/application/__init__.py",
+    "src/chatbot/config/__init__.py",
+    "src/chatbot/domain/__init__.py",
+    "src/chatbot/domain/ports/__init__.py",
+    "src/chatbot/infrastructure/__init__.py",
+    "src/chatbot/interface/__init__.py",
+    "src/chatbot/interface/routes/__init__.py",
+]
+ROOT_OWNED = ["pytest.ini", "requirements.txt", ".gitignore", ".env.example"]
+
+
+def package_markers() -> list[str]:
+    """Trả về đường dẫn tương đối của mọi tệp py dưới thư mục src."""
+    base = ROOT / "src"
+    return sorted(
+        p.relative_to(ROOT).as_posix() for p in base.rglob("*.py") if p.is_file()
+    )
+
+
+def test_only_empty_markers_exist_under_src():
+    assert package_markers() == sorted(EXPECTED_MARKERS)
+
+
+def test_p1_root_files_exist_and_no_stray_root_python():
+    for name in ROOT_OWNED:
+        assert (ROOT / name).is_file(), name
+    root_python = sorted(
+        p.name for p in ROOT.glob("*.py") if p.name != "run.py"
+    )
+    assert root_python == [], root_python
+```
+
+Step 30. Run red.
+- Command: `py -m pytest -q tests/test_probe_07_ownership.py`.
+- Expected result: red, because there is no file in `src` if LOOP 3 or LOOP 4 was completed hastily. If green right away then apply KILL.10.
+
+Step 31. GREEN and REFACTOR combined.
+- Command: `py -m pytest -q; $LASTEXITCODE`.
+- Expected result: 15 tests green, exit code 0.
+
+### LOOP 8. FINAL CLEANUP AND DELETION OF TEMPORARY VERIFICATION FILES
+
+Step 32. Delete all temporary verification files, mandatory, in order to satisfy INV.7.
+
+```powershell
+Remove-Item .\tests\test_probe_*.py -Force
+Remove-Item .\tests\__pycache__ -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item .\.pytest_cache -Recurse -Force -ErrorAction SilentlyContinue
+py -m pytest -q
+$LASTEXITCODE
+```
+
+- Algorithm: `FOR` each file matching the pattern `test_probe_*.py` `IF` it exists `THEN` delete it; `ELSE` skip. Then `FOR` each cache directory `IF` it exists `THEN` delete it recursively; `ELSE` skip.
+- Expected result: no test is collected, exit code 5. This is the green evidence for P1 per section B12.
+
+Step 33. Run the 100-line rule from section B11, it must print no file name.
+
+```powershell
+Get-ChildItem -Recurse -Include *.py,*.js |
+  Where-Object { $_.FullName -notmatch '\.venv|node_modules' } |
+  ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+```
+
+- Expected result: no line is printed.
+
+Step 34. Cross-check with another PowerShell tool, the result must match the temporary verification.
+
+```powershell
+Select-String -Path .\.env.example -Pattern "OPENAI_API_KEY"
+Select-String -Path .\.gitignore -Pattern "^\.env$"
+(Get-Content .\requirements.txt | Measure-Object -Line).Lines
+Test-Path .\.venv\Scripts\Activate.ps1
+```
+
+- Algorithm: `FOR` each result line `IF` it matches the expectation in table 3d-5 `THEN` mark it as passing; `ELSE` apply the corresponding ERR.
+- Expected result: the first command returns exactly one matching line, the second returns exactly one matching line, the third returns 5, the fourth returns `$True`.
+
+Step 35. FINAL LOCK: do NOT run `py run.py` in P1 because `run.py` belongs to P6. Every server-start command belongs to P8 and must be wrapped in `Start-Process`, see section B11.
+
+## 3d. Decision tables
+
+### Table 3d-1. Decisions based on the test result
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| The verification is red and throws `FileNotFoundError` because the target file does not exist yet | Correct RED loop, move on to creating the file in the GREEN loop | Exit code 1 |
+| The verification is green right after being written | The RED loop is meaningless, delete and rewrite the test | KILL.10 |
+| The verification is red because an assertion fails | Correct RED loop | Exit code 1 |
+| `py -m pytest -q` collects no test | PASS in P1, because section B12 requires 0 tests | Exit code 5 |
+| `py -m pytest -q` reports a configuration syntax error | `pytest.ini` is wrong, apply ERR.11 | Exit code 4 |
+| Collection error caused by broken temporary verification | Fix the verification and run again | Exit code 2 or 3 |
+| `ModuleNotFoundError` when importing a package under `src` | `pythonpath = src` is wrong or missing, apply ERR.10 | Exit code 1 |
+| The `py` command cannot be invoked | The `py` command is not in PATH, apply ERR.1 | Exit code 9009 |
+| `py --version` reports 3.9 or lower | Stop, apply ERR.2 | No code |
+| `Activate.ps1` is blocked | Apply `Set-ExecutionPolicy -Scope Process Bypass`, apply ERR.3 | No code |
+| `pip install` has a network error | Apply ERR.4, retry at most three times | Exit code 1 |
+| `.venv` already exists | Keep it, do not recreate, apply ERR.5 | No code |
+| The project directory is inside OneDrive | Apply ERR.8, move out of OneDrive | No code |
+| The project directory name contains a space | Apply ERR.7, rename without a space | No code |
+| A tracked file contains the provider key prefix | KILL.1, stop immediately, do not print the value | Exit code 1 |
+| A `.py` or `.js` file reaches 100 lines | KILL.3, split the file | Exit code 1 |
+
+### Table 3d-2. Environment decisions
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| `py --version` succeeds with version 3.10 or later | Continue with LOOP 0 | No code |
+| `py --version` fails | Stop, apply ERR.1 | 9009 |
+| `Test-Path .\.venv` is `$True` | Do not recreate the venv, note it in the log | No code |
+| `Test-Path .\.venv` is `$False` | Run `py -m venv .venv` | No code |
+| `New-Item` reports `UnauthorizedAccess` when creating a directory | Apply ERR.21 | No code |
+| `Set-ExecutionPolicy` reports not permitted | Apply ERR.3, label UNVERIFIED | No code |
+| `pip install -r requirements.txt` fails with `Timeout` or `Connection` | Apply ERR.4, retry at most three times then stop | 1 |
+| `pip list` does not show one of the five packages | Reinstall that package alone | 1 |
+| `pip list` shows all five packages | Move to LOOP 1 | No code |
+| `py -m pip list` shows installation into the system Python, not the venv | The venv is not activated, apply ERR.23 | No code |
+| `$env:VIRTUAL_ENV` is empty after activation | The venv could not be loaded, apply ERR.3 then ERR.23 | No code |
+
+### Table 3d-3. File ownership decisions, avoiding meaningless empty files
+
+| Path | Created by P1 | Reason |
+|---|---|---|
+| `pytest.ini` | Yes | Owned by P1 |
+| `requirements.txt` | Yes | Owned by P1 |
+| `.gitignore` | Yes | Owned by P1 |
+| `.env.example` | Yes | Owned by P1 |
+| `src/chatbot/**/__init__.py` | Yes, eight empty files | Section B2 permits empty files |
+| `static/index.html`, `static/js/*.js` | No | Owned by P7 |
+| `src/chatbot/config/*.py` | No | Owned by P2 |
+| `src/chatbot/domain/*.py` | No | Owned by P3 |
+| `src/chatbot/application/*.py` | No | Owned by P4 |
+| `src/chatbot/infrastructure/*.py` | No | Owned by P5 |
+| `src/chatbot/interface/*.py`, `run.py` | No | Owned by P6 |
+| `system-prompt.txt` | No | Owned by P8 |
+| `memory.json` | No | Produced by P5 and P6 at run time |
+| `.env` | No | Produced by P6 through `POST /api/setup` |
+| `tests/fakes/*.py` | No | B9 specifies fake files, belonging to P4 and P5 |
+| `AGENTS.md` | No | Owned by P0 |
+
+### Table 3d-4. Configuration file content decisions
+
+| Key in `.env.example` | Required value | Constraint rule |
+|---|---|---|
+| `OPENAI_API_KEY` | `PUT-YOUR-KEY-HERE` | Placeholder text, length 20 characters or more, not a real key |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Non-empty string |
+| `OPENAI_TEMPERATURE` | `0.3` | Real number in the range 0.0 to 2.0 |
+| `OPENAI_TIMEOUT` | `30` | Integer in the range 1 to 300 |
+| `HOST` | `127.0.0.1` | Only `127.0.0.1` or `localhost`, per section B3 |
+| `PORT` | `2610` | Integer in the range 1024 to 65535 |
+| `MEMORY_FILE` | `memory.json` | Valid relative path |
+| `MAX_MESSAGES` | `5` | Integer in the range 1 to 50 |
+| `SYSTEM_PROMPT_FILE` | `system-prompt.txt` | Valid relative path |
+
+### Table 3d-5. Acceptance evidence decisions
+
+| Evidence | Verification command | Pass result | Apply when not passing |
+|---|---|---|---|
+| The interpreter host is ready | `py -m pytest -q` | Exit code 5, no test collected | ERR.6, then ERR.16 |
+| The directory tree matches section B2 | `Get-ChildItem -Recurse -Directory` | Exactly thirteen directories | KILL.4 |
+| The `.env` file is blocked from tracking | `Select-String -Path .\.gitignore -Pattern "^\.env$"` | Returns exactly one line | ERR.12 |
+| The sample file is not blocked from tracking | `Select-String -Path .\.gitignore -Pattern "^\.env\*$"` | Returns no line | ERR.12 |
+| The sample file has all nine keys | `Select-String -Path .\.env.example -Pattern "OPENAI_API_KEY"` | Returns exactly one line | ERR.11 |
+| The package file has exactly five lines | `(Get-Content .\requirements.txt \| Measure-Object -Line).Lines` | Equals 5 | ERR.9 |
+| The venv is ready | `Test-Path .\.venv\Scripts\Activate.ps1` | `$True` | ERR.5 |
+| The 100-line rule | The command in section B11 | No line printed | KILL.3 |
+
+### Table 3d-6. Special path handling decisions
+
+| Input condition | Output result | Error code or exception |
+|---|---|---|
+| The project path contains a space | Stop, require renaming the directory, for example `C:\work\chatbot` | ERR.7 |
+| The project path is inside a OneDrive sync folder | Stop, require moving outside OneDrive | ERR.8 |
+| The project path is inside a system directory | Stop, require moving to the user directory | ERR.21 |
+| The path is too deep, error when creating a temporary file | Shorten the project path | ERR.24 |
+| Files in the project have Vietnamese diacritics in their names | Not mandatory, but they must tolerate replacement characters when printing the report | ERR.25 |
+
+ERR:
+
+- ERR.1 `py` is not in PATH. Symptom: PowerShell reports that it does not recognize the `py` command, code 9009. Cause: the Python launcher is not installed or is not in the account PATH. Remedy: open a new PowerShell window and run again; if it still fails, install the launcher from the Microsoft Store, or fix PATH in the environment options dialog and then reopen the window. Related files: none, this is an environment error.
+- ERR.2 Python below 3.10. Symptom: `py -c "import sys; print(sys.version_info[:2])"` prints a pair less than `(3, 10)`. Cause: an older installed version, or the `py` command points at the wrong old version. Remedy: upgrade to 3.11 or later, delete the old `.venv` then recreate it from Step 2. Related files: `.venv`, `requirements.txt` must be installed again from scratch.
+- ERR.3 `Activate.ps1` is blocked by the execution policy. Symptom: the message `UnauthorizedAccess` with a mention of the execution policy. Cause: the default execution policy of PowerShell is restrictive. Remedy: run `Set-ExecutionPolicy -Scope Process Bypass -Force` then activate again; label UNVERIFIED because enterprise Group Policy may override it and cannot be verified before an actual run. Related files: `.venv\Scripts\Activate.ps1`.
+- ERR.4 `pip` network error. Symptom: `Read timed out` or `Connection aborted` while installing a package. Cause: lost connection, a slow index, or the school firewall. Remedy: retry at most three times; if needed, use a fallback index with `py -m pip install -i <địa chỉ chỉ mục thay thế> -r requirements.txt`. Related files: `requirements.txt`.
+- ERR.5 `.venv` already exists. Symptom: `py -m venv .venv` runs on top of the old venv, or the old venv no longer has the libraries. Cause: a previous run created it. Remedy: keep it if the venv is still good; if the venv is broken, delete the `.venv` directory and recreate it. Related files: `.venv`.
+- ERR.6 `pytest` returns code 5. Symptom: no test is collected. Cause: this is exactly P1 design, because section B12 requires 0 tests at this step. Remedy: change NOTHING, treat it as a pass; apply ERR.16 only when temporary verification files really remain. Related files: `pytest.ini`, the `tests` directory.
+- ERR.7 The project directory name contains a space. Symptom: `pythonpath` is not injected, the path is truncated, or the error message shows only part of the path. Cause: whitespace in the project path. Remedy: rename the directory to a name without spaces, for example `C:\work\chatbot`, then recreate `.venv`. Related files: `pytest.ini`, the whole directory tree.
+- ERR.8 OneDrive syncs the project directory. Symptom: `.py` files appear and then vanish, temporary files are locked, or the atomic write fails when P5 runs. Cause: OneDrive locks the file being synced. Remedy: move the project out of the sync folder, for example `C:\work\chatbot`. Related files: the whole project, especially `.env` and `memory.json`.
+- ERR.9 A package version is not found in `requirements.txt`. Symptom: the message `No matching distribution found`. Cause: the pinned version does not exist on the package index at install time. Remedy: change the pin to a range, for example `flask>=3.0,<4.0`, update the file content and run `py -m pip install -r requirements.txt`. Related files: `requirements.txt`.
+- ERR.10 `ModuleNotFoundError` when importing a package under `src`. Symptom: `chatbot` is not found during the test. Cause: `pythonpath = src` is missing from `pytest.ini`, or `pytest` runs outside the project root directory. Remedy: re-add the exact configuration line and run the command from the root directory. Related files: `pytest.ini`.
+- ERR.11 `pytest.ini` has wrong syntax or the sample file has wrong content. Symptom: exit code 4 with a configuration error message, or the assertion about the sample file content is red. Cause: the `[pytest]` header is missing, there are extra characters, or one of the nine keys is missing. Remedy: rewrite exactly the seven lines as in LOOP 1 and exactly the nine lines as in LOOP 5. Related files: `pytest.ini`, `.env.example`.
+- ERR.12 `.gitignore` swallows `.env.example`. Symptom: the sample file does not appear in the change list. Cause: the pattern `.env*` is used instead of the file name. Remedy: change the rule to `.env`. Related files: `.gitignore`.
+- ERR.13 `.env.example` contains a real key. Symptom: the value of `OPENAI_API_KEY` looks like a real key. Cause: a key was pasted into the sample file by mistake. Remedy: replace it with `PUT-YOUR-KEY-HERE`, delete the key from the work session history, treat it as KILL.1 and request key revocation. Related files: `.env.example`.
+- ERR.14 `memory.json` is byte-empty. Symptom: the file is renamed to `memory.json.corrupt-...` when P5 reads it. Cause: the empty file was created by hand. Remedy: do not create this file in P1; if it was already created, delete it outright, leaving the gap exactly as in section B3. Related files: `memory.json`.
+- ERR.15 A missing `__init__.py` file. Symptom: `ImportError` when P3 onward imports a subpackage. Cause: the directory tree was created without the package marker file. Remedy: rerun the PowerShell block in Step 16. Related files: `src/chatbot/**/__init__.py`.
+- ERR.16 Temporary verification files remain. Symptom: `py -m pytest -q` still collects tests after Step 32. Cause: the delete step was forgotten. Remedy: delete `tests\test_probe_*.py` and the cache directories. Related files: the `tests` directory.
+- ERR.17 A temporary verification file exceeds 100 lines. Symptom: the 100-line rule prints a file name. Cause: too many assertions crammed into one file. Remedy: split into several verification files, each under 100 lines. Related files: `tests/test_probe_*.py`.
+- ERR.18 `pytest.ini` uses the CRLF end-of-line character. Symptom: the value read back contains an extra character, the assertion comparing it with `src` is red. Cause: the editor on Windows saves CRLF. Remedy: re-save with the LF end-of-line character and rerun the verification, per section B13. Related files: `pytest.ini`, `.env.example`.
+- ERR.19 `pytest` is not found in the interpreter in use. Symptom: `No module named pytest`. Cause: running outside the venv. Remedy: activate the venv and run again, see ERR.3 and ERR.23. Related files: `requirements.txt`.
+- ERR.20 The `tests` directory is missing. Symptom: `pytest` reports a command-line argument error because `testpaths` points to a nonexistent directory. Cause: the directory tree was created incompletely. Remedy: recreate the `tests` directory. Related files: `pytest.ini`, the `tests` directory.
+- ERR.21 No write permission in the project directory. Symptom: `UnauthorizedAccess` on `New-Item`. Cause: the directory is inside `Program Files` or belongs to a protected area. Remedy: move the project to the user directory, for example `C:\work`. Related files: the whole project.
+- ERR.22 Windows Defender deletes `.venv`. Symptom: the venv disappears after installing a package. Cause: security software mistakes it for malware. Remedy: add the project directory to the defender exclusion list and recreate `.venv`. Related files: `.venv`.
+- ERR.23 Libraries are installed into the wrong, system Python. Symptom: `py -m pip list` shows the packages outside the venv. Cause: the venv was not activated when installing. Remedy: activate the venv, check `$env:VIRTUAL_ENV`, then install again from `requirements.txt`. Related files: `requirements.txt`, `.venv`.
+- ERR.24 The path is too long. Symptom: an error when creating a temporary file or when doing the atomic write in P5. Cause: a deep path plus a long directory name. Remedy: shorten the project path. Related files: none in particular.
+- ERR.25 Printing file names with Vietnamese diacritics fails. Symptom: replacement characters appear in the report. Cause: an old console code page. Remedy: run `chcp 65001` before running the command, or name files without diacritics. Related files: `.gitignore`, `pytest.ini`.
+- ERR.26 The test run is interrupted. Symptom: exit code 2 with an interruption message. Cause: the interrupt key combination was pressed while running. Remedy: run `py -m pytest -q` again until there is a definite exit code. Related files: none in particular.
+- ERR.27 The `requirements.txt` file has a blank line in the middle. Symptom: the assertion about the line count or the package count does not match. Cause: an extra blank line from editing. Remedy: delete the blank line, keeping exactly the five lines containing `==`. Related files: `requirements.txt`.
+- ERR.28 The `.env.example` file is saved with a BOM. Symptom: the first key read back comes with a strange character, the path-comparison assertion is red. Cause: the editor adds a file header mark. Remedy: re-save as UTF-8 without BOM, read it back with `encoding="utf-8"`, per section B13. Related files: `.env.example`.
+
+KILL:
+
+- KILL.1 A real key is detected in any tracked file, in the log, or in an error message. Stop immediately, do NOT print the key value in the report, print only the file name and the line number, and request key revocation.
+- KILL.2 The `domain/` directory is detected importing `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib` or `json`. Stop and report, fix it in P3.
+- KILL.3 A `.py` or `.js` file reaches 100 lines and cannot be split into smaller functions under the one function per file rule. Stop and report the file name together with the line count.
+- KILL.4 You are forced to modify or create a file outside the P1 scope, that is under `config/`, `domain/`, `application/`, `infrastructure/`, `interface/`, `static/` or `tests/fakes`. Stop, because P2 to P9 own those files.
+- KILL.5 A contradiction with sections B1 to B12 is detected, for example renaming the function `trim_history` or changing the directory tree. Stop and quote the exact violated section.
+- KILL.6 You intend to use a command that does not exist in PowerShell, for example a command of another operating system, `sudo`, `source`, or a command-line tool not present in Windows. Stop and replace it with the equivalent PowerShell command.
+- KILL.7 You intend to run the server in the opencode shell, or you intend to run `py run.py` when `run.py` does not exist yet. Stop, because every server-start command belongs to P8 and must be wrapped in `Start-Process`.
+- KILL.8 An API key written into `memory.json`, a loosened `.gitignore` that tracks `.env`, or a `.env` created by hand in P1 is detected. Stop and report.
+- KILL.9 The temporary verification files cannot be deleted after Step 32, so `py -m pytest -q` still collects tests and INV.7 is violated. Stop and report the list of remaining files.
+- KILL.10 The RED loop is green right after the test is written, that is the test does not catch the defect. Stop, delete the test and rewrite it until it is genuinely red.
+- KILL.11 A library outside the list of five packages is added to `requirements.txt` without recording the reason in the report. Stop and ask again about the scope.
+- KILL.12 JSX or Babel is used, or `innerHTML` or `dangerouslySetInnerHTML` is written in any file under `static/`. Stop, because section B8 forbids it explicitly.
+- KILL.13 `AGENTS.md` or a rule inside it is modified while doing P1. Stop, because P0 is the single source of rules.
+- KILL.14 `.env` is created by hand, or a key value is copied from another machine into any file, including a temporary verification file. Stop, delete the file, treat it as KILL.1.
+- KILL.15 The 100-line rule is bypassed by merging several functions into one file to finish faster. Stop and split again under the one function per file rule.
+- KILL.16 `py -m pytest -q` is run from a subdirectory instead of the root directory and green is concluded. Stop, cd back to the root directory and run again to confirm.
+
+# 4. Format:
+
+## 4.1 PRE
+
+- PRE-1: The learner has installed Windows 11 and PowerShell 5.1 or later, and has a new PowerShell window open.
+- PRE-2: The learner has finished reading parts 1, 2, 3 of this prompt (goals, scope, B2 directory tree) and has no remaining questions about any file name in the tree.
+- PRE-3: The working directory is named `chatbot`, located inside any parent directory; the directory name MAY contain spaces and MAY contain Vietnamese diacritics.
+- PRE-4: opencode works INSIDE `chatbot`, does not work in the parent directory, and does not create files outside the B2 tree.
+- PRE-5: The full prompt consisting of 10 files P0 through P9 is already fully present in the parent directory or inside `chatbot`; P1 itself only needs to read P0.
+- PRE-6: No virtual environment has been created previously in `chatbot`; if one already exists, follow the pre-existing `.venv` branch in table 4.5.
+
+## 4.2 POST
+
+- POST-1: The B2 directory tree exists exactly at the empty level: 13 directories, 8 `__init__.py` files 0 lines long, 4 configuration files, `tests/` containing only the `fakes/` directory.
+- POST-2: `.venv` exists inside `chatbot` and `py -m pip install -r requirements.txt` exits with code 0.
+- POST-3: `pytest.ini` declares exactly the two keys `pythonpath = src` and `testpaths = tests`.
+- POST-4: `py -m pytest -q` runs from `chatbot` and prints the line `configfile: pytest.ini`; exit code 5 is accepted at P1.
+- POST-5: `.gitignore` contains all 6 mandatory patterns from 4.4.
+- POST-6: `.env.example` contains all 9 keys of B3, with the API key line in the `PUT-YOUR-KEY-HERE` state.
+- POST-7: NO `.env` file exists in `chatbot` after P1.
+- POST-8: opencode prints the final report in exactly the 4.6 format consisting of three tables A, B, C.
+
+## 4.3 INV
+
+- INV-1: ∀ files produced at P1: `số_dòng < 100`.
+- INV-2: `tests/` contains ONLY the directory `fakes/`; there is no test file yet.
+- INV-3: `tests/` and `tests/fakes/` do NOT have `__init__.py`, exactly as specified by B2.
+- INV-4: `.env` does NOT exist after P1, while `.env.example` DOES exist.
+- INV-5: ∀ key samples used in future tests: `TEST_KEY_` followed by 20 x letters.
+- INV-6: No file in `chatbot/` contains a real key string; the scan in 5.9 must print no matching lines.
+- INV-7: Every PowerShell command runs from `chatbot` and uses `Join-Path` or a path inside double quotes, so that spaces in directory names are tolerated.
+- INV-8: The number of files in `chatbot/` after P1 equals exactly the 12 newly created files, with no extra files outside B2.
+- INV-9: Files are generated with `\n` line endings, not CRLF line endings, so that they behave identically on every operating system.
+
+## 4.4 Mandatory result file table
+
+| File | Type | Max lines | Must contain |
+|---|---|---|---|
+| `requirements.txt` | configuration | 10 | flask, langchain-core, langchain-openai, python-dotenv, pytest |
+| `pytest.ini` | configuration | 10 | `pythonpath = src`, `testpaths = tests` |
+| `.gitignore` | configuration | 20 | `.env`, `.venv`, `memory.json`, `__pycache__`, `*.pyc`, `memory.json.corrupt-*` |
+| `.env.example` | configuration | 20 | all 9 B3 keys, the line `OPENAI_API_KEY=PUT-YOUR-KEY-HERE` |
+| `src/chatbot/__init__.py` | code | 1 | empty |
+| `src/chatbot/config/__init__.py` | code | 1 | empty |
+| `src/chatbot/domain/__init__.py` | code | 1 | empty |
+| `src/chatbot/domain/ports/__init__.py` | code | 1 | empty |
+| `src/chatbot/application/__init__.py` | code | 1 | empty |
+| `src/chatbot/infrastructure/__init__.py` | code | 1 | empty |
+| `src/chatbot/interface/__init__.py` | code | 1 | empty |
+| `src/chatbot/interface/routes/__init__.py` | code | 1 | empty |
+
+## 4.5 Environment incident decision table
+
+| Symptom | Diagnostic command | Action |
+|---|---|---|
+| `py` is not recognized | `py -0p` | reinstall Python 3.11, tick the py launcher box during installation, open a new PowerShell window, then try again |
+| Python version below 3.10 | `py -0p` | upgrade to 3.10 or later, 3.11 recommended, do not continue P1 with the old version |
+| `Activate.ps1` is blocked by the execution policy | `Get-ExecutionPolicy -Scope Process` | run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` (UNVERIFIED) then activate again |
+| `pip` fails with a network error while installing packages | `Test-NetConnection pypi.org -Port 443` | retry after 30 seconds, check the firewall, or use an offline installation package |
+| `.venv` already exists from a previous run | `Test-Path .\.venv` | use `py -m venv .venv --upgrade` instead of deleting and reinstalling |
+| `py -m pytest -q` returns code 5 | look at the `no tests ran` line | accept it, because `tests/` is still empty; code 0 is mandatory only from P2 |
+| Directory name contains spaces | `(Get-Location).Path` | all paths must be inside double quotes, and use `Join-Path` inside the loop |
+| Directory is inside OneDrive | `Test-Path (Join-Path (Get-Location) '.venv')` together with checking whether the parent directory name contains OneDrive | move the project out of OneDrive then recreate `.venv`, because background sync breaks atomic writes |
+
+## 4.6 B10 incident matrix relevant to P1
+
+| Incident | Handling at P1 |
+|---|---|
+| Empty API key at startup | not yet due at P1, only prepare `.env.example` with placeholder values |
+| Malformed key | not yet due, `validate_api_key` is generated at P4 |
+| Writing `.env` is permission-denied | not yet due, `EnvApiKeyStore` is generated at P5 |
+| `.env` has CRLF line endings | not yet due, but `.env.example` must use `\n` line endings per INV-9 |
+| Directory containing `memory.json` does not exist | not yet due, `JsonMemoryRepository` is generated at P5 |
+| Port 2610 is busy | not yet due, `run.py` is generated at P6; P1 only records the port in `.env.example` |
+| `HOST=0.0.0.0` is rejected | not yet due, `load_settings` is generated at P2 |
+| Directory name contains spaces | handled immediately at P1 with `Join-Path` and double quotes |
+| `pip` network error | handled immediately at P1 per table 4.5 |
+| `pytest` returns code 5 | handled immediately at P1, regarded as the CORRECT RESULT |
+
+## 4.7 opencode final report format
+
+The report consists of three tables, with no added praise:
+
+Table A, files created:
+
+| File | Line count | Abbreviated content | Status |
+|---|---|---|---|
+
+Table B, verification:
+
+| Verification | Command | Expected result |
+|---|---|---|
+
+Table C, the two test runs:
+
+| Run | Command | Exit code | Conclusion |
+|---|---|---|---|
+
+- Run 1 must be the RED run: `py -m pytest -q` when `tests/` does not yet exist, exit code 4, together with a verbatim excerpt of 5 real lines from the log.
+- Run 2 must be the GREEN run: `py -m pytest -q` after the tree has been created, exit code 5, together with an excerpt of the line `no tests ran` and an explanation of why code 5 is valid at P1.
+- ∀ lines excerpted from the log: keep them unchanged, do not invent, do not rewrite in opencode's own style.
+- The report must explicitly state the two UNVERIFIED labels already used at P1: the version ranges in `requirements.txt`, and the command `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+
+# 5. Example:
+
+## 5.1 Standard PowerShell command sequence
+
+```powershell
+cd "C:\bai tap"
+py -0p
+cd "C:\bai tap\chatbot"
+py -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+py -m pip install -r requirements.txt
+py -m pytest -q
+```
+
+## 5.2 Create the B2 directory tree
+
+```powershell
+$dirs = @(
+  "src\chatbot\config",
+  "src\chatbot\domain",
+  "src\chatbot\domain\ports",
+  "src\chatbot\application",
+  "src\chatbot\infrastructure",
+  "src\chatbot\interface",
+  "src\chatbot\interface\routes",
+  "static",
+  "static\js",
+  "tests",
+  "tests\fakes"
+)
+foreach ($d in $dirs) {
+  New-Item -ItemType Directory -Force -Path (Join-Path (Get-Location) $d) | Out-Null
+}
+$pkgs = @(
+  "src\chatbot\__init__.py",
+  "src\chatbot\config\__init__.py",
+  "src\chatbot\domain\__init__.py",
+  "src\chatbot\domain\ports\__init__.py",
+  "src\chatbot\application\__init__.py",
+  "src\chatbot\infrastructure\__init__.py",
+  "src\chatbot\interface\__init__.py",
+  "src\chatbot\interface\routes\__init__.py"
+)
+foreach ($p in $pkgs) {
+  New-Item -ItemType File -Force -Path (Join-Path (Get-Location) $p) | Out-Null
+}
+```
+
+## 5.3 `requirements.txt`
+
+```text
+flask>=3.0,<4.0
+langchain-core>=0.3,<0.4
+langchain-openai>=0.2,<0.4
+python-dotenv>=1.0,<2.0
+pytest>=8.0,<9.0
+```
+
+## 5.4 `pytest.ini`
+
+```ini
+[pytest]
+pythonpath = src
+testpaths = tests
+```
+
+## 5.5 `.gitignore`
+
+```text
+.env
+.venv/
+venv/
+memory.json
+memory.json.corrupt-*
+__pycache__/
+*.pyc
+.pytest_cache/
+```
+
+## 5.6 `.env.example`
+
+```text
+OPENAI_API_KEY=PUT-YOUR-KEY-HERE
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.3
+OPENAI_TIMEOUT=30
+HOST=127.0.0.1
+PORT=2610
+MEMORY_FILE=memory.json
+MAX_MESSAGES=5
+SYSTEM_PROMPT_FILE=system-prompt.txt
+```
+
+## 5.7 The `__init__.py` files
+
+All eight `__init__.py` files listed in 5.2 are empty, 0 lines long, with no blank line and no trailing line terminator. opencode creates them with the file-writing tool using empty string content, adding no comments and no `from __future__ import annotations`.
+
+## 5.8 The 100-line verification
+
+```powershell
+Get-ChildItem -Recurse -Include *.py,*.js |
+  Where-Object { $_.FullName -notmatch '\.venv|node_modules' } |
+  ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+```
+
+Expected result: no path is printed.
+
+## 5.9 Secret scan and `.gitignore` check
+
+```powershell
+Get-ChildItem -Recurse -Include *.py,*.js,*.txt,*.ini,*.md |
+  Where-Object { $_.FullName -notmatch '\.venv' } |
+  Select-String -Pattern '[sS][kK]-[A-Za-z0-9]{8,}'
+Select-String -Path .\.gitignore -Pattern '^\.env$'
+Select-String -Path .\.gitignore -Pattern 'memory\.json\.corrupt-\*'
+Test-Path .\.env
+```
+
+Expected result: the first command prints nothing, the second prints exactly 1 line, the third prints exactly 1 line, the fourth prints `False`.
+
+## 5.10 Time one test run
+
+```powershell
+Measure-Command { py -m pytest -q } | Select-Object -ExpandProperty TotalSeconds
+```
+
+## 5.11 Sample PowerShell log: RED run then GREEN run
+
+```text
+PS C:\bai tap\chatbot> py -m pytest -q
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pluggy-1.5.0
+rootdir: C:\bai tap\chatbot
+collected0 items
+ERROR: file or directory not found: tests
+=========================== short test summary info ============================
+ERROR: [Errno 2] No such file or directory: 'tests'
+PS C:\bai tap\chatbot> $LASTEXITCODE
+4
+```
+
+```text
+PS C:\bai tap\chatbot> py -m pytest -q
+============================= test session starts =============================
+platform win32 -- Python 3.11.9, pluggy-1.5.0
+rootdir: C:\bai tap\chatbot
+configfile: pytest.ini
+collected 0 items
+no tests ran
+PS C:\bai tap\chatbot> $LASTEXITCODE
+5
+```
+
+Conclusion: code 5 is the CORRECT RESULT at P1 because `tests/` is still empty. From P2 onward, the exit code must be 0.
+
+## 5.12 Exit code state transition table
+
+| Exit code | Meaning | Handling at P1 |
+|---|---|---|
+| 0 | green test | accept |
+| 1 | red test | stop, report the name of the red test |
+| 2 | pytest configuration syntax error | stop, fix `pytest.ini` |
+| 4 | wrong command or missing directory | stop, create `tests/` then run again |
+| 5 | no tests were collected | accept |
+
+## 5.13 Sample final report of opencode for P1
+
+| File | Line count | Abbreviated content | Status |
+|---|---|---|---|
+| `requirements.txt` | 5 | 5 packages, with version ranges | created |
+| `pytest.ini` | 3 | `pythonpath`, `testpaths` | created |
+| `.gitignore` | 8 | 6 mandatory patterns plus 2 extra patterns | created |
+| `.env.example` | 9 | all 9 B3 keys | created |
+| `src/chatbot/**/__init__.py` | 0 | 8 empty files | created |
+
+| Verification | Command | Expected result |
+|---|---|---|
+| 100-line rule | command 5.8 | prints nothing |
+| secret scan | command 5.9 line 1 | prints nothing |
+| `.env` key in `.gitignore` | command 5.9 line 2 | 1 matching line |
+| no `.env` file yet | command 5.9 line 4 | `False` |
+
+| Run | Command | Exit code | Conclusion |
+|---|---|---|---|
+| RED | `py -m pytest -q` | 4 | `file or directory not found: tests` |
+| GREEN | `py -m pytest -q` | 5 | `no tests ran`, valid at P1 |
+
+# 6. Notices:
+
+- Do NOT use bash commands, do NOT use `python3`, do NOT use `sudo`: the platform is PowerShell on Windows 11.
+- Do NOT use em dashes in any generated file or in the reply: this is the style rule of the entire blueprint, use hyphens only.
+- Do NOT create a `.env` file yourself at P1: only create `.env.example`, because `.env` is the file produced by `/api/setup` at P6.
+- Do NOT copy the line `OPENAI_API_KEY=PUT-YOUR-KEY-HERE` from `.env.example` into `.env`: the placeholder value makes `configured` become true, and the first-time key entry dialog will never appear.
+- Do NOT pin exact versions in `requirements.txt`: the ranges in 5.3 are UNVERIFIED and must be tested on the learner's machine.
+- Do NOT add `__init__.py` to `tests/` and `tests/fakes/`: B2 has no such two files.
+- Do NOT create an empty test file at P1 to force exit code 0: code 5 is the correct state at P1, and forcing green that way is a false report.
+- Do NOT run bare `pytest -q`, always run `py -m pytest -q`: only the form with `-m` inserts the root directory into the search path, which is what allows the fakes in `tests/fakes/` to be loaded at P4.
+- Do NOT let exit code 5 slide by unnoticed in the report: you must state clearly that code 5 is valid at P1 and that from P2 onward it must be 0.
+- Do NOT invent log lines: the RED run and the GREEN run must be copied verbatim from a real PowerShell window.
+- Do NOT run the server inside opencode's shell: `run.py` does not exist yet at P1, and every later server run must use `Start-Process`.
+- Do NOT call `Invoke-RestMethod http://127.0.0.1:2610/api/health` at P1: that endpoint belongs to P6, and calling it early only returns 404.
+- Do NOT create files with PowerShell write commands: use opencode's file-writing tool for `.gitignore`, `.env.example`, `requirements.txt`, `pytest.ini`, because a leading dot in a filename is often misinterpreted by PowerShell.
+- Do NOT create a temporary document file in `chatbot/` to store the input information: the B2 tree has no place for such a file, and all input information lives in the first message to opencode.
+- Do NOT place the project inside OneDrive: background sync breaks the atomic writes of `memory.json` at P5.
+- Do NOT delete the old `.venv` and reinstall from scratch when one already exists: use `py -m venv .venv --upgrade` to save time.
+- Do NOT use the `--upgrade-deps` flag on the first install: it easily pulls in versions outside the range declared in 5.3.
+- Do NOT put a real key into any file at P1: the key sample in future tests is always `TEST_KEY_` followed by 20 x letters.
+- Do NOT join two hyphens inside PowerShell variable names: many commands above already have their own flag.
+- `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` is UNVERIFIED: it is effective only until the PowerShell window is closed, and must be tested for real before being trusted.
+- Do NOT exclude secrets in `.gitignore` file by file: you must use exactly the patterns in 5.5.
+- Do NOT skip the 100-line verification and the secret scan: these are the only two evidence commands for the P1 report.
+
+# 7. Input:
+
+The learner provides opencode with the following six items, by pasting them into the first message of the working session, and does NOT create a new file inside `chatbot` to hold them:
+
+- The absolute path of the directory that will contain the project, for example `C:\bai tap\chatbot`. If the directory name contains spaces or Vietnamese diacritics, write it as is, without stripping diacritics.
+- The output of `py -0p`: the list of Python versions the machine recognizes, and which version is selected as the default.
+- The output of `Get-ExecutionPolicy -Scope Process`.
+- The desired port for the application, default `2610`; if that port is busy, state the alternative port explicitly.
+- A yes or no answer to the question of whether the directory is currently inside OneDrive.
+- The model to use, default `gpt-4o-mini`.
+
+If the learner wants to save this list for later reference, store it in the PARENT directory of `chatbot` or in a personal note; absolutely do not create a new file in the B2 tree.
+
+The API key must NOT be pasted into the message to opencode, must NOT go into any file at P1, must NOT go into `.env`. The key will be entered by hand right on the chatbot page on the first run, through the MUI dialog, and then the server writes it into `.env` itself. That flow exists only from P7 onward, so at P1 no key at all is needed for verification.
+
+# 8. OKRs (O + KRs):
+
+- O: Complete the chatbot project skeleton runnable on Windows 11 with a venv, 5 installed packages, pytest configuration, the 100-line rule, and one red test run followed by one green test run, enough groundwork for P2.
+- KR1: `py -m pytest -q` runs from `chatbot` and prints the line `configfile: pytest.ini`.
+- KR2: The RED run has exit code 4 with the message `file or directory not found: tests`, the GREEN run has exit code 5 with the line `no tests ran`, both quoted verbatim in the report.
+- KR3: Inside `chatbot` there are exactly 13 directories, 8 `__init__.py` files 0 lines long, 4 configuration files, 25 new items in total, and `tests/` contains only the `fakes/` directory.
+- KR4: `requirements.txt` has all 5 packages flask, langchain-core, langchain-openai, python-dotenv, pytest, and `py -m pip install -r requirements.txt` exits with code 0.
+- KR5: `pytest.ini` contains exactly the two keys `pythonpath = src` and `testpaths = tests`, checked with `Select-String` and printing 2 matching lines.
+- KR6: `.gitignore` matches the expression `^\.env$` and contains all 6 patterns `.env`, `.venv`, `memory.json`, `__pycache__`, `*.pyc`, `memory.json.corrupt-*`.
+- KR7: `.env.example` has exactly 9 key lines per B3, the API key line in the `PUT-YOUR-KEY-HERE` state, and the command `Test-Path .\.env` returns `False`.
+- KR8: The 100-line verification command in 5.8 prints no path, i.e. `|Số tệp vi phạm| = 0`.
+- KR9: The secret scan command in 5.9 prints no matching line, i.e. `|khóa lộ trong mã| = 0`.
+- KR10: `py -0p` shows Python 3.10 or later, and the report records the command `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` with the UNVERIFIED label.
+- KR11: `Measure-Command { py -m pytest -q }` gives a result under 60 seconds on the learner's machine.
+- KR12: The final report of opencode has exactly the three tables A, B, C per 4.7, comes with no added praise, and does not refer to any file outside the B2 tree.

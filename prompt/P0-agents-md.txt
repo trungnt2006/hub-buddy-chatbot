@@ -1,0 +1,1267 @@
+PROMPT P0: the AGENTS.md file, project rules for opencode. Paste the WHOLE text below into opencode in order P0 to P9; paste P0 only after all earlier prompts are green.
+
+# 1. Role:
+You are a senior software engineer and instructor for a web chatbot class, specialising in writing formal spec in Vietnamese.
+Your role in this prompt: sole author of the `AGENTS.md` file located at the project root `chatbot/`.
+You are the one who sets the rules for opencode, an AI programming helper that runs in a command-line window, not the person who writes product code in this prompt.
+The `AGENTS.md` file is the technical contract that opencode must read and obey before any code-editing command in the remaining 9 prompts.
+Final deliverable of P0: exactly one `AGENTS.md` file, under 100 lines, containing exactly 7 rules labelled `## LUAT-1` through `## LUAT-7`.
+Also in that same file: the read order P0 to P9, the list of files allowed to be created per B2, a summary of the first-run API key flow, and the behaviour rules of opencode.
+You do not write domain, application, infrastructure or interface source code in this prompt, you do not write the interface, you do not write tests.
+You do not ask the learner for the API key, you do not receive the API key through the command-line window, you do not request environment variables that contain the key.
+You lose points if `AGENTS.md` is 100 lines or longer, if it exceeds 7 rules, if it names files outside the B2 directory tree, or if it contradicts the blueprint.
+Tone: Vietnamese with full diacritics for the running text, code names and paths stay in English, use only short hyphens.
+
+# 2. Context (5W1H):
+
+**What (what it is):** P0 is the first prompt in the chain of 10 prompts of the web chatbot blueprint, producing the single file `AGENTS.md` at the root of the `chatbot/` project.
+This file collects the 7 project rules, the read order P0 to P9, the list of files allowed to be created, a summary of the first-run API key flow, and the behaviour rules of opencode.
+The file is under 100 lines, uses plain Markdown, contains no runnable code, and is not placed in a code block.
+Seven core rules: KISS, DDD with dependency arrows, TDD, one function per file and every file under 100 lines, configuration and API key only in `.env`, safety, and operation on Windows 11 with PowerShell using the `py` command.
+
+**Why (why it matters):** opencode needs a fixed set of rules read once and then applied to every later action, otherwise the rules get repeated in each prompt and easily produce contradictions in file names and function names.
+`AGENTS.md` is the only place that decides file names and safe behaviour, so every contradiction must be brought back here and this file wins.
+The API key is the learner's secret; if opencode asks for the key in the command-line window the key leaks into command history and into logs, violating rule 6 and rule 5.
+A short rules file also lets P9 run up to 3 debugging rounds without having to re-derive the principles.
+
+**Who/Where (who and where):** The direct reader is opencode; the person responsible for verification is the learner running on Windows 11.
+The file goes at the `chatbot/` project root, level with `run.py`, `requirements.txt`, `pytest.ini`, `.env.example`, `.gitignore`.
+The place where evidence is verified is that very root directory; every check command runs in PowerShell and needs no server startup.
+
+**When (when):** Read `AGENTS.md` first, before opencode creates any other file in the project.
+Write `AGENTS.md` in the first step of P0, before building the directory tree at P1.
+Edit `AGENTS.md` only when the blueprint changes, and always ask before overwriting a file that already has content.
+
+**How (how):** Run PRE to check the conditions first, write content with exactly 7 sections `## LUAT-n` plus the 5 mandatory sections, check POST, run the evidence command, and only then move to P1.
+Every rule in the file is written in concise English, accompanied by exactly one line of Vietnamese explanation with diacritics.
+If a post-condition is wrong, cut the wording, rewrite, measure again, up to 3 revision rounds.
+
+**Prompt shape (prompt form):** Has the heading `AGENTS.md` starting with the line `# BLUEPRINT v4 AGENTS` so a line counter and `rg` counting work.
+Do not wrap the file in a code block, do not use JSX, do not use HTML tags.
+Every file name mentioned in `AGENTS.md` must sit inside the B2 directory tree, no inventing new file names.
+
+**Constraints (bindings):** Under 100 lines, exactly 7 rules, no vendor key prefix.
+No `innerHTML`, no `dangerouslySetInnerHTML`, listen only on `127.0.0.1` or `localhost`.
+Do not use bash commands; Python commands are invoked only with `py`; the server does not run in the opencode shell.
+Use only PowerShell, `rg`, and `Select-String` when `rg` is missing; use only short hyphens.
+
+**Position of P0 in the chain of 10 prompts:** P0 comes first, there is no prompt before it, so P0 must supply its own context to set the rules.
+The prompt right after P0 is `P1-khung-du-an-windows.txt`, which builds the directory tree, the `venv` environment, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example`.
+After that come, in order: P2 configuration, P3 domain, P4 application, P5 infrastructure, P6 interface Flask, P7 interface MUI, P8 system prompt and trial run, P9 debugging and acceptance.
+The last prompt is `P9-go-loi-va-nghiem-thu.txt`, where all the rules already set are audited.
+
+**Relation to the first-run API key flow:** `AGENTS.md` does not install the key, but it must state clearly the rule forbidding opencode from asking for the key.
+When the chatbot runs for the first time, `main.js` calls `GET /api/setup/status`; if it returns `{"configured": false}` the page shows the "Nhập khóa API" dialog, the learner pastes the key, `POST /api/setup` writes into `.env`, and then chat runs immediately.
+If the learner pastes the key into the opencode command-line window, opencode refuses, does not repeat the key, and only the learner enters the key on the page.
+This rule must live directly in `AGENTS.md` so that every later prompt inherits it, instead of repeating it in each prompt.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+PRE:
+
+- PRE.1: Check the working directory. Command: `Get-Location`. If the path does not end with `chatbot`, stop and ask the learner to put opencode in the project root directory.
+- PRE.2: Check whether the target file already exists. Command: `Test-Path .\AGENTS.md`. The result has only three states, leading to three different behaviours in Table 1.
+- PRE.3: If `Test-Path .\AGENTS.md` returns `True`, measure the size with `(Get-Item .\AGENTS.md).Length`. A value of 0 means the file is empty, treat it as not yet present, so it can be written without asking.
+- PRE.4: Check that `py` is available. Command: `py --version`. If it errors, stop per ERR.3, do not use another executable name.
+- PRE.5: Check that `rg` is available to measure evidence. Command: `rg --version`. If it errors, use `Select-String` instead and record this in the evidence.
+- PRE.6: List the Markdown files at the project root. Command: `Get-ChildItem -Filter '*.md'`. If there is a Markdown file other than `AGENTS.md`, read it first to avoid rule conflicts, do not edit that file.
+- PRE.7: Confirm the directory tree state. Command: `Get-ChildItem -Recurse -Force | Measure-Object`. A completely empty directory is a normal case, handle it per ERR.7.
+- PRE.8: Confirm that P0 does not create a virtual environment. Command: `Test-Path .\.venv`. The result is only for the record, P0 does not touch `.venv` whether it exists or not.
+- PRE.9: Confirm that blueprint v4 is fully loaded into the context, especially B1, B2, B3, B7, B10, B11, B12. If not, stop, do not infer file names on your own.
+- PRE.10: Confirm that all nine `Settings` fields from B3 and all status codes from B7 are known. Do not add configuration keys outside table B3.
+- PRE.11: Confirm that P0 produces only `AGENTS.md`. The planned check command afterwards: `Get-ChildItem -File | Select-Object -ExpandProperty Name` prints exactly `AGENTS.md`.
+- PRE.12: Confirm that every check command runs without needing a server. P0 must not start a server and must not call any endpoint.
+- PRE.13: Confirm the target language: the interpretation inside `AGENTS.md` is Vietnamese with diacritics; file names, function names, configuration key names and endpoint names stay in English.
+- PRE.14: Confirm that no requirement in the blueprint contradicts PRE.1 through PRE.13. If there is one, state the contradiction clearly and stop.
+- PRE.15: Confirm that no file-write requirement falls outside the B2 list within P0 scope. If the learner asks to create another file, handle it per KILL.2.
+
+Table 1. Decision by target file state:
+
+| Result of `Test-Path .\AGENTS.md` | File size | Behaviour of opencode |
+|---|---|---|
+| `False` | not applicable | Create a new `AGENTS.md`, no need to ask |
+| `True` | equal to 0 | Overwrite, no need to ask |
+| `True` | greater than 0 | Stop, ask "Ghi đè hay giữ?", do not write until there is an answer |
+
+POST:
+
+- POST.1: `AGENTS.md` exists at the project root and has non-empty content. Check: `Test-Path .\AGENTS.md` combined with `(Get-Item .\AGENTS.md).Length -gt 0`.
+- POST.2: The first line is exactly `# BLUEPRINT v4 AGENTS`. Check: `Get-Content .\AGENTS.md -TotalCount 1`.
+- POST.3: Exactly 7 rule sections, labels `## LUAT-1` through `## LUAT-7`. Check: `(Select-String -Path .\AGENTS.md -Pattern '^## LUAT-[1-7]$').Count` equals 7.
+- POST.4: The line count is less than 100. Check: `(Get-Content .\AGENTS.md | Measure-Object -Line).Lines` is less than 100.
+- POST.5: There is a section for the read order P0 to P9 with all ten prompt file names. Check: `(Select-String -Path .\AGENTS.md -Pattern '^P[0-9]-').Count` equals 10.
+- POST.6: There is the list of files allowed to be created matching the B2 directory tree, nothing extra and nothing missing. Check: read each line by hand against B2, write the result into the evidence.
+- POST.7: There is a section summarising the first-run API key flow naming `GET /api/setup/status`, `POST /api/setup`, the `.env` file, the line `OPENAI_API_KEY=`. Check: `(Select-String -Path .\AGENTS.md -Pattern 'api/setup').Count` is greater than 0.
+- POST.8: There is a behaviour-rule section stating that the learner is not asked for the API key. Check: `(Select-String -Path .\AGENTS.md -Pattern 'API key').Count` is greater than 0.
+- POST.9: No string in the file looks like a real key. Check: `(Select-String -Path .\AGENTS.md -Pattern 'sk-[A-Za-z0-9]').Count` equals 0, and `(Select-String -Path .\AGENTS.md -Pattern '[A-Za-z0-9_-]{40,}' | Where-Object { $_.Line -notmatch 'TEST_KEY_x{20}' })` prints nothing.
+- POST.10: The file contains no `innerHTML`, no `dangerouslySetInnerHTML`, and does not recommend `0.0.0.0`. Check: `(Select-String -Path .\AGENTS.md -Pattern 'innerHTML|0\.0\.0\.0').Count` equals 0.
+- POST.11: The file contains no vendor key prefix and no path pointing outside the project. Check: `(Select-String -Path .\AGENTS.md -Pattern 'sk-[A-Za-z0-9]|https?://').Count` equals 0, except for the allowed line `http://127.0.0.1:2610`.
+- POST.12: The file contains no file name outside B2. Check: cross-reference by hand every file name in the file against the B2 tree, record the cross-reference result clearly.
+- POST.13: Each rule is written in short English with exactly one line of Vietnamese explanation with diacritics. Check: read by hand, each rule has one line starting with `Dịch:`.
+- POST.14: The evidence printout shows at least four values: line count, rule section count, prompt name line count, key-like string count. One-line command: `$f='.\AGENTS.md'; "DONG=$((Get-Content $f | Measure-Object -Line).Lines) LUAT=$((Select-String -Path $f -Pattern '^## LUAT-[1-7]$').Count) PROMPT=$((Select-String -Path $f -Pattern '^P[0-9]-').Count) SKHOA=$((Select-String -Path $f -Pattern 'sk-[A-Za-z0-9]').Count)"`.
+
+ERR:
+
+- ERR.1: Wrong working directory. Behaviour: stop, print PRE.1, ask the learner for the project root path, do not search for another directory on your own.
+- ERR.2: `AGENTS.md` already has content. Behaviour: stop, print PRE.2, ask "Ghi đè hay giữ?" with the default recommendation being keep, do not write until there is an answer.
+- ERR.3: `py` is not in PATH. Behaviour: stop, announce in Vietnamese that the machine lacks Python, Python 3.12 must be installed and PowerShell reopened, do not use an alternative executable name.
+- ERR.4: PowerShell blocks script execution because of the execution policy. Behaviour: print the guidance command that configures the execution policy for the current command, ask the learner to run it themselves, then re-run PRE.4, do not escalate privileges on your own.
+- ERR.5: The learner pastes the API key into the command-line window. Behaviour: refuse clearly, write it into no file, do not repeat the key, only the learner enters the key on the page through the "Nhập khóa API" dialog.
+- ERR.6: After writing, `AGENTS.md` is 100 lines or longer. Behaviour: cut the wording, keep all 7 rules and the 5 mandatory sections, rewrite, measure again, up to 3 rounds.
+- ERR.7: The directory is completely empty and there is no directory tree yet. Behaviour: normal, create `AGENTS.md` at the root, create no extra directory or file in P0.
+- ERR.8: After writing, there is a file other than `AGENTS.md` created by P0. Behaviour: delete that file immediately, re-run PRE.11, write the result into the evidence.
+
+Table 2. Decision by the PowerShell execution policy:
+
+| Result of `Get-ExecutionPolicy` | Meaning | Behaviour of opencode |
+|---|---|---|
+| `Unrestricted` or `RemoteSigned` | execution allowed | run the command, continue |
+| `Restricted` | scripts blocked | ERR.4, wait for the learner to handle it |
+| `AllSigned` | signature required | ERR.4, state clearly that a digital signature is needed for the current command |
+
+KILL:
+
+- KILL.1: The learner asks opencode to enter, guess or create the API key itself.
+- KILL.2: A request to create files outside the B2 list within P0 scope.
+- KILL.3: A request to run the server in the opencode shell, or a request to call an endpoint in P0.
+- KILL.4: A request to drop one of the 7 rules, or to add an eighth rule.
+- KILL.5: A request to use bash commands, or a command-line tool outside PowerShell.
+- KILL.6: A request to listen on a network other than the local machine, meaning `HOST=0.0.0.0` or a similar address.
+- KILL.7: A request to write the key into code, into `memory.json`, into `system-prompt.txt`, or into `localStorage`.
+
+INV:
+
+- INV.1: Exactly 7 rules, fixed labels `## LUAT-1` through `## LUAT-7`, no eighth rule, no rule with duplicate content.
+- INV.2: Rule 1 is KISS: choose the simplest approach that is still correct, simplify before adding a feature.
+- INV.3: Rule 2 is DDD: interface depends only on application, application depends only on domain, infrastructure installs the ports of the domain.
+- INV.4: Domain is the innermost layer: no file reads, no environment variable reads, no network calls, no framework imports.
+- INV.5: Ports live in `src/chatbot/domain/ports/`: `MemoryRepository`, `ChatModel`, `ApiKeyStore`, each abstract class in its own file.
+- INV.6: Rule 3 is TDD: write the red test first, fix until green, then refactor without changing test behaviour.
+- INV.7: Test names are fixed by the B9 list, written before the corresponding source code.
+- INV.8: Rule 4 is one function or one class per file; every file is under 100 lines, including test files and js files in `static/js/`.
+- INV.9: The command measuring the 100-line rule must print nothing when compliance holds: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }`.
+- INV.10: Rule 5: the API key lives only in the `.env` file with the line `OPENAI_API_KEY=`, not in code, not in `memory.json`, not in `system-prompt.txt`.
+- INV.11: Do not hardcode any configuration value in code; every value goes through `Settings`.
+- INV.12: `Settings` is a frozen dataclass with exactly nine fields: `openai_api_key`, `openai_model`, `openai_temperature`, `openai_timeout`, `host`, `port`, `memory_file`, `max_messages`, `system_prompt_file`.
+- INV.13: Rule 6: the API key does not go into logs, does not go into responses, does not go into error messages; if it must be displayed, use `mask_secret` to return `"****"` plus the last 4 characters when the length is at least 12.
+- INV.14: The server never returns the key to the client, even when `POST /api/setup` succeeds.
+- INV.15: File writes must be atomic: write a temp file in the same directory then `os.replace`; on error delete the temp file, never leave a half-written file behind.
+- INV.16: Every error returned to the browser has exactly two fields `error` and `message`, in Vietnamese, never a stack trace.
+- INV.17: The interface renders message content with React text nodes; `innerHTML` is forbidden, `dangerouslySetInnerHTML` is forbidden.
+- INV.18: Listen only on `127.0.0.1` or `localhost`; the value `HOST=0.0.0.0` is rejected when loading configuration.
+- INV.19: The key is not stored in the browser `localStorage`.
+- INV.20: The page calls `GET /api/setup/status` right after loading; if `configured` is false, show the key dialog first, only then enter the chat frame.
+- INV.21: After `POST /api/setup` succeeds, chat runs immediately without restarting the server, because `LangChainChatModel` re-reads the key on every send.
+- INV.22: Code 409 means a missing key and reopens the dialog; code 401 means a wrong key and opens the dialog with the message "Khóa API không đúng".
+- INV.23: Rule 7: operate on Windows 11 with PowerShell; Python commands are invoked only with `py`; the server is started with `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`.
+- INV.24: Do not use bash commands; measure evidence with `rg`, and if `rg` is missing use `Select-String`.
+- INV.25: Files may only be created inside the B2 list; files outside the list must be asked about before creation, and P0 creates no file other than `AGENTS.md`.
+- INV.26: `AGENTS.md` is the single source of rules; if a later prompt contradicts it, `AGENTS.md` wins and the conflict must be recorded.
+- INV.27: A question to the learner always carries concrete choices and one default recommendation, never a vague open question.
+- INV.28: In tests, the sample key is always `TEST_KEY_` followed by exactly 20 x characters, no real key is used.
+- INV.29: Handover evidence always includes the command used and the actual result, not merely a claim that it was checked.
+- INV.30: File names and function names match the blueprint exactly; every file name mentioned in `AGENTS.md` must belong to the B2 tree.
+- INV.31: Each rule in `AGENTS.md` is written in short English with exactly one `Dịch:` line in Vietnamese with full diacritics.
+- INV.32: The prose in `AGENTS.md` uses only short hyphens, no em dashes, no emoji.
+- INV.33: Revise `AGENTS.md` up to 3 rounds to satisfy POST.1 through POST.14; after more than 3 rounds, report clearly which post-condition is still failing and stop.
+
+Table 3. Mandatory frame of the `AGENTS.md` file in exactly this order:
+
+```markdown
+# BLUEPRINT v4 AGENTS
+## LUAT-1 ... ## LUAT-7
+## THU-TU-DOC-P0-DEN-P9
+## DUOC-PHEP-TAO-TEP
+## LUONG-KHOA-API-LAN-DAU
+## HAN-XU-CUA-OPENCODE
+```
+
+Extra ERR for the case where `AGENTS.md` already exists and is longer than 100 lines: if the learner chooses to keep, opencode only reads it to cross-reference and then reports the deviations from the blueprint, it does not write, does not delete, does not shorten it on its own judgement.
+
+## 3b. Short glossary
+
+- opencode: AI programming helper that runs in a command-line window, reads `AGENTS.md` to know the rules before editing code.
+- API: the programming interface of an external service, here the answering-model service; the access key is called the API key.
+- endpoint: the URL path the server receives a command on, for example `GET /api/setup/status`.
+- venv: a virtual Python environment created with `py -m venv .venv`, activated with `.\.venv\Scripts\Activate.ps1`.
+- pytest: tool that runs Python tests, configured through `pytest.ini`, run with `py -m pytest -q`.
+- DDD: domain-driven layered architecture, fixing the dependency arrows interface, application, infrastructure toward the domain.
+- TDD: the process of writing the red test first, fixing the code until green, then refactoring without changing test behaviour.
+- MUI: React interface library maintained by Material UI, here used as the UMD build from a CDN with `React.createElement`, no JSX.
+- formal spec: formal specification using the blocks PRE, POST, INV, ERR, KILL and the symbols `∀`, `∃`, `⇒`, `∧`, `∨`, `:=` so every condition is verifiable by a command.
+- KISS: the principle of choosing the simplest approach that is still correct, simplifying before adding a feature.
+- rg: fast search tool in files, used to count rule sections and to count unwanted strings.
+- session_id: chat session identifier string taken from `localStorage["session_id"]` or newly generated with `crypto.randomUUID()`.
+- `.env`: text file holding configuration and the API key, each line in the form `TEN_KHOA=gia_tri`, a line starting with `#` is a comment.
+- `.env.example`: `.env` sample listing only key names and default values, absolutely never a real key.
+- atomic write: writing a file via a temp file in the same directory then an atomic replace, avoiding a half-written file left behind.
+- mask_secret: a function returning `"****"` plus the last 4 characters when the key length is at least 12, used for logs and messages.
+- UNVERIFIED: a label marking information not yet tested with a tool, for example a CDN path, which must be tested before being trusted.
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation procedure (TDD)
+
+The terms opencode, API, endpoint, venv, pytest, DDD, TDD, MUI and formal spec have already been explained exactly once in the terminology section above; from here on they are only used, never re-explained.
+
+PRE. Preconditions for the whole of section 3c:
+
+1. The working directory is `chatbot\` on Windows 11, currently open in PowerShell.
+2. `rg` is present in `PATH`; if not, handle it per `ERR.12` and use `Select-String` instead.
+3. The `py` command returns exit code 0; if not, handle it per `ERR.6` and stop per `KILL.5`.
+4. Before creating any file, the existing tree must be listed with `rg --files` or `Get-ChildItem -Recurse -File`. Purpose: detect an already existing `AGENTS.md` (apply `ERR.4`) and detect stray files.
+5. The `tests/` directory does not yet contain any file belonging to the P1 through P9 scope.
+6. NO file exists outside the B2 directory tree created by P0. Every file serving testing must be generated inside the operating system temp directory granted by pytest's `tmp_path`; under NO circumstances place stray files in the project tree (apply `ERR.33`, `KILL.13`).
+7. The entire debugging loop is limited to three loops per file (apply `KILL.8`).
+
+POST. After running all of section 3c:
+
+1. Exactly four files are added to the project tree: `AGENTS.md`, `tests/test_static_rules.py`, `tests/test_domain_purity.py`, `tests/test_first_run_flow.py`.
+2. No stray file, temp file or backup file remains in the project tree outside the B2 tree list.
+3. `AGENTS.md` has exactly seven rule items, has the ten-milestone P0 through P9 reading-order section in increasing order, is under 100 lines, and each rule carries exactly one line of Vietnamese explanation with diacritics.
+4. `py -m pytest -q -rs` ends with 0 failures; every skip states a Vietnamese reason with diacritics naming the correct milestone.
+5. Three evidence measurements print out: the rule item count equal to 7, the `AGENTS.md` line count less than 100, and the key-pattern scan printing no line.
+6. `AGENTS.md` is the only deliverable file of P0; the three files in `tests/` are automated evidence per B9 and will be triggered further by P3, P4, P6, P7.
+
+INV.
+
+1. INV.P0.A: every file created by P0 is under 100 lines, including test files.
+2. INV.P0.B: in `AGENTS.md`, the first occurrence position of `P0` is less than the position of `P1`, `P1` is less than `P2`, and so on through `P9`.
+3. INV.P0.C: in `tests/` there is NO literal key prefix string; the pattern may only be built by concatenating the two constants `"sk"` and `"-"` so that the test file scans itself without self-incriminating.
+4. INV.P0.D: every key used in tests has the form `TEST_KEY_` plus 20 `x` characters.
+5. INV.P0.E: a red state for a wrong reason (syntax error, wrong function name, module cannot be loaded) is treated as `ERR.8` and must be fixed immediately inside the CLEAN loop.
+6. INV.P0.F: NO file belonging to the P1 through P9 scope is created in advance; an empty directory may be created only when a test condition requires it.
+7. INV.P0.G: every file generated during testing lies outside the project tree and is cleaned automatically by `pytest`.
+8. INV.P0.H: after section 3c ends, the project tree contains NO file outside the B2 tree, including files whose names look like stray files.
+9. INV.P0.I: a test may skip only when the corresponding prompt milestone has not started; if the milestone has started and the test still skips, report `ERR.13`.
+
+Signatures of the functions to be created within the P0 scope (keep the names, they are never changed later):
+
+| file | function | signature |
+|---|---|---|
+| `tests/test_static_rules.py` | `_text` | `_text(path: Path) -> str` |
+| `tests/test_static_rules.py` | `_walk` | `_walk(base: Path, suffixes: tuple[str, ...]) -> list[Path]` |
+| `tests/test_static_rules.py` | `_static_files` | `_static_files() -> list[Path]` |
+| `tests/test_static_rules.py` | `_oversized` | `_oversized(paths: list[Path]) -> list[str]` |
+| `tests/test_domain_purity.py` | `_domain_files` | `_domain_files() -> list[Path]` |
+| `tests/test_domain_purity.py` | `_read` | `_read(path: Path) -> str` |
+| `tests/test_domain_purity.py` | `_imported_roots` | `_imported_roots(line: str) -> list[str]` |
+| `tests/test_domain_purity.py` | `_offenders` | `_offenders() -> list[str]` |
+| `tests/test_first_run_flow.py` | `_Store` | `_Store() -> None` with `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None` |
+| `tests/test_first_run_flow.py` | `_get_setup_status` | `_get_setup_status() -> Callable[[ApiKeyStore], dict]` |
+| `tests/test_first_run_flow.py` | `_configure_api_key` | `_configure_api_key() -> Callable[[ApiKeyStore, str], None]` |
+| `tests/test_first_run_flow.py` | `_invalid_api_key` | `_invalid_api_key() -> type[ChatbotError]` |
+
+### 3c.1 Loop 1: `tests/test_static_rules.py` then `AGENTS.md`
+
+**Step 1 - RED (write the tests first, accept failure).**
+
+1. File to create: `tests/test_static_rules.py`, the first version containing all the tests of this loop.
+2. Signatures: see the table above; every test function has the form `def test_...() -> None`.
+3. Pseudocode for the file reading, tree walking and line counting part:
+
+```text
+FUNCTION _text(path):
+    IF path là tệp:
+        RETURN nội dung path với encoding "utf-8", bỏ qua lỗi giải mã
+    ELSE:
+        RETURN chuỗi rỗng
+
+FUNCTION _walk(base, suffixes):
+    IF base KHÔNG tồn tại: RETURN danh sách rỗng
+    IF base là tệp: RETURN [base]
+    FOR EACH path IN base rglob("*") ĐÃ SẮP XẾP:
+        IF path là tệp AND path.suffix thuộc suffixes: giữ path
+    RETURN danh sách đã giữ
+
+FUNCTION _oversized(paths):
+    FOR EACH path IN paths:
+        IF số dòng của _text(path) >= 100: giữ đường dẫn của path
+    RETURN danh sách đường dẫn đã giữ
+```
+
+4. File content:
+
+```python
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+AGENTS = ROOT / "AGENTS.md"
+STATIC = ROOT / "static"
+RULE_MARKERS = ("KISS", "DDD", "TDD", "100", ".env", "127.0.0.1", "PowerShell")
+PROMPT_ORDER = tuple("P" + str(index) for index in range(10))
+SCAN_ROOTS = ("AGENTS.md", "system-prompt.txt", "requirements.txt", "src", "static", "tests")
+SUFFIXES = (".py", ".js", ".html", ".md", ".txt")
+FORBIDDEN_JS = ("innerHTML", "dangerouslySetInnerHTML")
+SECRET_PREFIX = "sk" + "-"
+EXPECTED_PATHS = (
+    "run.py",
+    "requirements.txt",
+    "pytest.ini",
+    ".env.example",
+    "system-prompt.txt",
+    "static/index.html",
+    "static/js/main.js",
+    "src/chatbot/interface/create_app.py",
+    "src/chatbot/application/send_message.py",
+    "src/chatbot/infrastructure/json_memory_repository.py",
+)
+
+
+def _text(path):
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _walk(base, suffixes):
+    if not base.exists():
+        return []
+    items = [base] if base.is_file() else sorted(base.rglob("*"))
+    return [p for p in items if p.is_file() and (base.is_file() or p.suffix in suffixes)]
+
+
+def _static_files():
+    return _walk(STATIC, (".js", ".html"))
+
+
+def _oversized(paths):
+    return [p.as_posix() for p in paths if len(_text(p).splitlines()) >= 100]
+
+
+def test_agents_md_exists():
+    assert AGENTS.is_file()
+
+
+def test_agents_md_under_100_lines():
+    assert len(_text(AGENTS).splitlines()) < 100
+
+
+def test_agents_md_has_seven_rule_markers():
+    assert [m for m in RULE_MARKERS if m not in _text(AGENTS)] == []
+
+
+def test_agents_md_lists_ten_prompts_in_order():
+    text = _text(AGENTS)
+    positions = [text.find(name) for name in PROMPT_ORDER]
+    assert all(position >= 0 for position in positions)
+    assert positions == sorted(positions)
+
+
+def test_agents_md_has_no_secret_prefix():
+    assert SECRET_PREFIX not in _text(AGENTS)
+
+
+def test_detector_flags_oversized_file_in_temp_dir(tmp_path):
+    sample = tmp_path / "vi-pham.js"
+    sample.write_text("const x0;\n" * 120, encoding="utf-8")
+    assert _oversized([sample]) == [sample.as_posix()]
+
+
+def test_static_files_under_100_lines():
+    assert _oversized(_static_files()) == []
+
+
+def test_static_js_has_no_raw_html_injection():
+    for path in _static_files():
+        if path.suffix == ".js":
+            assert [w for w in FORBIDDEN_JS if w in _text(path)] == [], path.as_posix()
+
+
+def test_no_secret_prefix_in_sources():
+    hits = []
+    for entry in SCAN_ROOTS:
+        for path in _walk(ROOT / entry, SUFFIXES):
+            if SECRET_PREFIX in _text(path):
+                hits.append(path.relative_to(ROOT).as_posix())
+    assert hits == []
+
+
+def test_expected_paths_present_or_not_started():
+    if not (ROOT / "run.py").exists() or not STATIC.is_dir():
+        pytest.skip("chưa bắt đầu mốc P1 và mốc P7")
+    assert [p for p in EXPECTED_PATHS if not (ROOT / p).exists()] == []
+```
+
+5. Pseudocode for the self-proof of the detector using the temp directory, replacing a stray file placed in the tree:
+
+```text
+FUNCTION test_detector_flags_oversized_file_in_temp_dir(tmp_path):
+    sample := tmp_path / "vi-pham.js"
+    ghi 120 dòng "const x0;" vào sample với encoding "utf-8"
+    ASSERT _oversized([sample]) == [sample.as_posix()]
+    GHI CHÚ: sample nằm trong thư mục tạm của hệ điều hành, KHÔNG nằm trong cây dự án
+```
+
+6. Check PowerShell command: `py -m pytest tests/test_static_rules.py -q -rs`.
+7. Expected result: `test_agents_md_exists`, `test_agents_md_under_100_lines`, `test_agents_md_has_seven_rule_markers`, `test_agents_md_lists_ten_prompts_in_order`, `test_agents_md_has_no_secret_prefix` RED with `AssertionError` because `AGENTS.md` does not exist yet; `test_detector_flags_oversized_file_in_temp_dir` green; `test_static_files_under_100_lines`, `test_static_js_has_no_raw_html_injection`, `test_no_secret_prefix_in_sources` green because the list is empty; `test_expected_paths_present_or_not_started` skipped with the reason `chưa bắt đầu mốc P1 và mốc P7`. Red in the correct sense.
+
+**Step 2 - GREEN (generate the minimum code to make the tests green).**
+
+1. File to create: `AGENTS.md`, copying verbatim the template in section 3a of this prompt.
+2. Signatures: no functions; this is a text document.
+3. Pseudocode for the write-file decision:
+
+```text
+IF AGENTS.md ĐÃ tồn tại AND người dùng CHƯA nói ghi đè hay nối thêm:
+    DỪNG, hỏi rõ lựa chọn, giữ nguyên tệp cũ        (ERR.4, KILL.4)
+ELSE IF AGENTS.md ĐÃ tồn tại AND người dùng ĐÃ yêu cầu ghi đè:
+    GHI ĐÈ bản mẫu
+ELSE:
+    TẠO MỚI từ bản mẫu
+
+SAU KHI ghi:
+    FOR EACH mục luật trong bảy luật đã chốt:
+        IF dấu hiệu luật vắng mặt: chèn đúng mục luật tương ứng   (ERR.2)
+    IF số mục luật != 7: KHÔNG thêm luật thứ tám, gộp hoặc tách lại   (ERR.2)
+    FOR EACH mốc P0 đến P9:
+        IF mốc vắng mặt hoặc thứ tự tăng dần bị phá: chèn lại mục thứ tự đọc   (ERR.27)
+    IF số dòng >= 100: rút gọn, hy sinh ví dụ trước, hy sinh luật sau   (ERR.3, KILL.3)
+    IF có nguyên văn chuỗi khớp SECRET_PREFIX: xóa ngay, KHÔNG in nội dung ra báo cáo   (ERR.1, KILL.1)
+```
+
+4. Check PowerShell command: `py -m pytest tests/test_static_rules.py -q -rs`.
+5. Expected result: `9 passed, 1 skipped`; the skip reason is `chưa bắt đầu mốc P1 và mốc P7`.
+
+**Step 3 - CLEAN.**
+
+1. Files to check: `tests/test_static_rules.py`, `AGENTS.md`.
+2. Signatures: keep the table above unchanged.
+3. Pseudocode:
+
+```text
+FOR EACH tệp trong {AGENTS.md, tests/test_static_rules.py}:
+    FOR EACH dòng trong tệp:
+        IF dòng chứa nguyên văn SECRET_PREFIX: sửa, KHÔNG ghi nội dung dòng vào báo cáo   (ERR.1)
+        IF dòng tiếng Việt thiếu dấu: sửa lại đủ dấu   (ERR.16, ERR.28)
+    IF số dòng của tệp >= 100: tách hoặc rút gọn   (ERR.3, ERR.10)
+FOR EACH tệp trong cây dự án:
+    IF tên tệp KHÔNG có trong cây B2: XÓA ngay   (ERR.33, KILL.13)
+```
+
+4. Check PowerShell command: `py -m pytest -q -rs`, then run the file-rule measurement at B11.
+5. Expected result: no failures; the file-rule measurement prints no file name; the project tree contains only the files listed in POST.
+
+### 3c.2 Loop 2: `tests/test_domain_purity.py`
+
+**Step 1 - RED (write the tests first, prove the detector works correctly).**
+
+1. File to create: `tests/test_domain_purity.py`.
+2. Signatures: see the table above.
+3. Pseudocode for the module-name extraction part from a command line:
+
+```text
+FUNCTION _imported_roots(line):
+    text := lấy text đã cắt khoảng trắng của line
+    IF text BẮT ĐẦU bằng "import ":
+        FOR EACH phần IN phần sau "import " tách theo dấu phẩy:
+            giữ tên lấy tới dấu chấm đầu tiên của phần
+        RETURN danh sách tên đã giữ
+    ELSE IF text BẮT ĐẦU bằng "from ":
+        head := phần trước " import " của phần sau "from "
+        giữ tên của head sau khi bỏ dấu chấm ở đầu, lấy tới dấu chấm đầu tiên
+        RETURN danh sách gồm tên đó    ELSE:
+        RETURN danh sách rỗng
+
+FUNCTION _offenders():
+    FOR EACH path IN _domain_files():
+        FOR EACH (number, line) IN các dòng của path, đánh số từ 1:
+            FOR EACH name IN _imported_roots(line):
+                IF name thuộc BANNED: ghi "đường/dẫn:số_dòng:name"
+    RETURN danh sách vi phạm
+```
+
+4. File content:
+
+```python
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DOMAIN = ROOT / "src" / "chatbot" / "domain"
+BANNED = ("flask", "langchain", "openai", "dotenv", "os", "pathlib", "json")
+
+
+def _domain_files():
+    if not DOMAIN.is_dir():
+        return []
+    return [p for p in sorted(DOMAIN.rglob("*.py")) if p.name != "__init__.py"]
+
+
+def _read(path):
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def _imported_roots(line):
+    text = line.strip()
+    if text.startswith("import "):
+        return [part.strip().split(".")[0] for part in text[len("import "):].split(",")]
+    if text.startswith("from "):
+        head = text[len("from "):].split(" import ")[0]
+        return [head.lstrip(".").split(".")[0]]
+    return []
+
+
+def _offenders():
+    found = []
+    for path in _domain_files():
+        for number, line in enumerate(_read(path).splitlines(), 1):
+            for name in _imported_roots(line):
+                if name in BANNED:
+                    found.append(f"{path.relative_to(ROOT).as_posix()}:{number}:{name}")
+    return found
+
+
+def test_domain_directory_exists():
+    assert DOMAIN.is_dir()
+
+
+def test_import_roots_parser_flags_banned_module():
+    assert _imported_roots("import os") == ["os"]
+
+
+def test_import_roots_parser_reads_relative_import():
+    assert _imported_roots("from .ports.memory_repository import MemoryRepository") == ["ports"]
+
+
+def test_import_roots_parser_ignores_plain_line():
+    assert _imported_roots("x = 1") == []
+
+
+def test_domain_has_no_framework_import():
+    assert _offenders() == []
+```
+
+5. Formal note: do NOT create stray files in `src/chatbot/domain/`. The correctness of the detector is proved by the three pure-text tests above; the honest red state of this loop is `test_domain_directory_exists`.
+6. Check PowerShell command: `py -m pytest tests/test_domain_purity.py -q -rs`.
+7. Expected result: `test_domain_directory_exists` RED with `AssertionError` because the `src/chatbot/domain` directory does not exist yet; the remaining four tests green. Red in the correct sense.
+
+**Step 2 - GREEN.**
+
+1. File to create: NO file at all. Only create an empty directory, complying with INV.P0.F.
+2. Signatures: unchanged.
+3. Pseudocode:
+
+```text
+FUNCTION tạo thư mục rỗng cho kiểm thử:
+    FOR EACH đường_dẫn IN ["src/chatbot/domain"]:
+        IF KHÔNG tồn tại: New-Item -ItemType Directory -Force IF thư mục CHỨA tệp .py nào: KHÔNG xóa, báo ERR.9 rồi dừng P0
+SAU ĐÓ:
+    IF _domain_files() rỗng: ghi nhận P3 sẽ lấp đầy
+    IF _offenders() khác rỗng vì tệp thật của P3: KHÔNG sửa, báo ERR.9, dừng P0
+```
+
+4. Check PowerShell command:
+
+```powershell
+New-Item -ItemType Directory -Force -Path src/chatbot/domain | Out-Null
+py -m pytest tests/test_domain_purity.py -q -rs
+```
+
+5. Expected result: `5 passed`. After P3, these five tests must genuinely be green, they must not be skipped.
+
+**Step 3 - CLEAN.**
+
+1. File to check: `tests/test_domain_purity.py`.
+2. Signatures: keep unchanged.
+3. Pseudocode:
+
+```text
+FOR EACH hàm phụ trong tệp:
+    IF hàm chỉ dùng đúng một chỗ: GỘP vào chỗ dùng
+    IF còn hàm phụ không dùng: XÓA
+IF số dòng của tệp >= 100: tách phần duyệt sang tests/test_static_rules.py đã có   (ERR.10)
+IF thư mục domain chứa tệp lạ do P0 tạo: XÓA tệp đó   (ERR.33, KILL.13)
+```
+
+4. Check PowerShell command: `(Get-Content tests/test_domain_purity.py | Measure-Object -Line).Lines`.
+5. Expected result: less than 100; the `src/chatbot/domain/` tree is empty.
+
+### 3c.3 Loop 3: `tests/test_first_run_flow.py`, the first-time key flow contract
+
+**Step 1 - RED (write the contract, the awaiting-milestone state).**
+
+1. File to create: `tests/test_first_run_flow.py`.
+2. Signatures: see the table at the beginning of section 3c.
+3. Pseudocode:
+
+```text
+FUNCTION _get_setup_status():
+    module := pytest.importorskip("src.chatbot.application.get_setup_status")
+    RETURN module.get_setup_status
+
+FUNCTION _configure_api_key():
+    module := pytest.importorskip("src.chatbot.application.configure_api_key")
+    RETURN module.configure_api_key
+
+FUNCTION _invalid_api_key():
+    module := pytest.importorskip("src.chatbot.domain.errors")
+    RETURN module.InvalidApiKey
+
+class _Store:
+    value := ""
+    is_configured() := (value KHÁC rỗng)
+    get() := value
+    save(api_key) := value := api_key
+```
+
+4. Formal note: within the P0 scope the application code does not exist yet, so the red condition is not available. The RED step here consists of writing the contract and declaring the skip state with a reason; you are NOT allowed to write application source code yourself to force the tests green, because that violates INV.P0.F and KILL.2.
+5. File content:
+
+```python
+import pytest
+
+TEST_KEY = "TEST_KEY_" + "x" * 20
+
+
+class _Store:
+    def __init__(self):
+        self.value = ""
+
+    def is_configured(self):
+        return bool(self.value)
+
+    def get(self):
+        return self.value
+
+    def save(self, api_key):
+        self.value = api_key
+
+
+def _get_setup_status():
+    module = pytest.importorskip("src.chatbot.application.get_setup_status")
+    return module.get_setup_status
+
+
+def _configure_api_key():
+    module = pytest.importorskip("src.chatbot.application.configure_api_key")
+    return module.configure_api_key
+
+
+def _invalid_api_key():
+    module = pytest.importorskip("src.chatbot.domain.errors")
+    return module.InvalidApiKey
+
+
+def test_status_false_before_key():
+    assert _get_setup_status()(_Store()) == {"configured": False}
+
+
+def test_status_true_after_save():
+    configure_api_key = _configure_api_key()
+    store = _Store()
+    configure_api_key(store, TEST_KEY)
+    assert _get_setup_status()(store) == {"configured": True}
+
+
+def test_blank_key_rejected():
+    with pytest.raises(_invalid_api_key()):
+        _configure_api_key()(_Store(), "   ")
+```
+
+6. Check PowerShell command: `py -m pytest tests/test_first_run_flow.py -q -rs`.
+7. Expected result: `3 skipped`, each skip records a clear Vietnamese reason with diacritics of the kind `chưa bắt đầu mốc P4`. This is an intentional red state in the form of awaiting a milestone, NOT an error.
+
+**Step 2 - GREEN (outside the P0 scope).**
+
+1. Related files, not written at P0: `src/chatbot/application/get_setup_status.py`, `src/chatbot/application/configure_api_key.py`, `src/chatbot/application/validate_api_key.py`, `src/chatbot/domain/errors.py`.
+2. Signatures per B5: `get_setup_status(store) -> dict`, `configure_api_key(store, api_key) -> None`.
+3. Pseudocode for `validate_api_key`:
+
+```text
+key := cắt khoảng trắng đầu cuối của api_key
+IF độ dài key < 20 HOẶC độ dài key > 200: ném InvalidApiKey
+IF key CHỨA khoảng trắng bên trong: ném InvalidApiKey
+FOR EACH ký tự trong key:
+    IF ký tự KHÔNG in được ASCII: ném InvalidApiKey
+RETURN key
+```
+
+4. Check PowerShell command (run after P4): `py -m pytest tests/test_first_run_flow.py -q -rs`.
+5. Expected result: `3 passed`; after P6 there must additionally be a case where re-initializing the application still returns the correct `configured`.
+
+**Step 3 - CLEAN.**
+
+1. File to check: `tests/test_first_run_flow.py`.
+2. Signatures: keep unchanged.
+3. Pseudocode:
+
+```text
+IF khóa dùng trong tệp khác TEST_KEY_ cộng 20 ký tự x: sửa lại   (INV.P0.D, ERR.29)
+IF kiểm thử đọc biến môi trường thật thay lớp giả: chuyển về lớp giả _Store   (ERR.29)
+IF tệp >= 100 dòng: tách lớp giả sang tests/fakes/fake_api_key_store.py theo B9
+IF còn tệp lạ trong tests/: XÓA   (ERR.33, KILL.13)
+```
+
+4. Check PowerShell command: `(Get-Content tests/test_first_run_flow.py | Measure-Object -Line).Lines`.
+5. Expected result: less than 100.
+
+### 3c.4 Loop 4: checking with pure PowerShell and writing the handover record
+
+**Step 1 - Count the seven rules.**
+
+1. File to check: `AGENTS.md`.
+2. Signatures: none.
+3. Pseudocode:
+
+```text
+FOR EACH dòng khớp mẫu "^## RULE [0-9]" trong AGENTS.md: đếm++
+IF đếm != 7:
+    KHÔNG tự thêm luật thứ tám ngoài bảy luật đã chốt
+    gộp hoặc bổ sung mục luật còn thiếu, đếm lại   (ERR.2)
+```
+
+4. Check PowerShell command: `rg -c "^## RULE" AGENTS.md`; if `rg` is absent then use `(Select-String -Path AGENTS.md -Pattern '^## RULE').Count`.
+5. Expected result: the result equals 7.
+
+**Step 2 - Measure the length and scan the key pattern.**
+
+1. Files to check: `AGENTS.md` and the whole code tree.
+2. Signatures: none.
+3. Pseudocode:
+
+```text
+IF (Get-Content AGENTS.md | Measure-Object -Line).Lines >= 100: rút gọn rồi đo lại   (ERR.3)
+needle := nối hằng "sk" và "-"
+NẾU rg -n --fixed-strings $needle AGENTS.md CÓ kết quả:
+    xóa ngay, KHÔNG in nội dung khóa ra báo cáo, dừng P0   (ERR.1, KILL.1)
+```
+
+4. Check PowerShell command:
+
+```powershell
+(Get-Content AGENTS.md | Measure-Object -Line).Lines
+$needle = "sk" + "-"
+rg -n --fixed-strings $needle AGENTS.md
+```
+
+5. Expected result: the first line is less than 100; the `rg` command prints no line.
+
+**Step 3 - Measure the file rule across the whole tree.**
+
+1. Files to check: every `.py` and `.js` file in the project tree.
+2. Signatures: none.
+3. Pseudocode:
+
+```text
+FOR EACH tệp .py hoặc .js KHÔNG nằm trong .venv hoặc node_modules:
+    IF số dòng >= 100: ghi tên tệp vào danh sách vi phạm
+IF danh sách vi phạm rỗng: ĐẠT
+ELSE: tách theo mỗi hàm một tệp rồi đo lại   (ERR.10)
+```
+
+4. Check PowerShell command: use verbatim the file-rule measurement at B11.
+5. Expected result: the command prints no file name.
+
+**Step 4 - Handover record.**
+
+1. Where to write: write the results into the report section of the working session, do NOT create any new file outside the B2 tree.
+2. Signatures: none.
+3. Pseudocode:
+
+```text
+GHI: danh sách tệp đã tạo trong P0
+GHI: kết quả py -m pytest -q -rs (số passed, số skipped, lý do từng lần bỏ qua)
+GHI: kết quả bốn phép đo ở Bước 1, Bước 2, Bước 3
+GHI: danh sách mã lỗi ERR đã gặp và cách xử lý
+GHI: danh sách nợ kỹ thuật chuyển cho P9
+GHI: xác nhận không có tệp nào ngoài cây B2 do P0 tạo
+```
+
+4. Check PowerShell command: `py -m pytest -q -rs`.
+5. Expected result: no failures; every skip has a Vietnamese reason with diacritics naming the correct prompt milestone.
+
+## 3d. Decision table
+
+### Table 3d-1. Decisions during generating and checking `AGENTS.md`
+
+| Entry condition | opencode action | Error code or exception | Related file |
+|---|---|---|---|
+| The project directory is empty, the B2 tree does not exist yet | Create `AGENTS.md`, the three test files in `tests/` and the empty directory `src/chatbot/domain`; do NOT pre-create the files of P1 or later | None | `AGENTS.md`, `tests/`, `src/chatbot/domain` |
+| `AGENTS.md` does not exist yet | Create it fresh from the section 3a template | None | `AGENTS.md` |
+| `AGENTS.md` already exists, the user has not said overwrite or append | Stop, present the differences, ask clearly for a choice | `ERR.4`, `KILL.4` | `AGENTS.md` |
+| `AGENTS.md` already exists, the user has requested overwrite | Overwrite, keeping all seven rules and the P0 through P9 reading-order section | None | `AGENTS.md` |
+| `AGENTS.md` is 100 lines or more | Shorten the example part; sacrifice earlier examples first, sacrifice later rules first | `ERR.3`, `KILL.3` | `AGENTS.md` |
+| `AGENTS.md` is missing one of the seven rule markers | Add exactly the corresponding rule item, do not add an eighth rule | `ERR.2` | `AGENTS.md` |
+| `AGENTS.md` does not mention all ten milestones P0 through P9 in increasing order | Insert the ten-prompt reading-order section, keeping the order | `ERR.27` | `AGENTS.md` |
+| `AGENTS.md` contains a key-like string | Delete immediately, replace with `TEST_KEY_` plus 20 `x` characters, do NOT write the key content into the report | `ERR.1`, `KILL.1` | `AGENTS.md` |
+| The learner pastes an API key into the opencode conversation | Refuse, do NOT store it anywhere, point to the key entry box on the page `http://127.0.0.1:2610` | `ERR.5`, `KILL.7` | `AGENTS.md`, safety section |
+| There is no `py` command on the machine | Report, stop every Python-dependent command, still deliver the text files | `ERR.6`, `KILL.5` | `run.py`, `requirements.txt` |
+| PowerShell blocks running `.\.venv\Scripts\Activate.ps1` | Take the workaround that needs no activation, do NOT elevate the global policy | `ERR.7`, `KILL.6` | `.venv` |
+| `rg` is not in `PATH` | Switch to `Select-String` for the text-based measurements, and state this clearly in the handover record | `ERR.12` | `AGENTS.md`, `tests/` |
+| You need to prove the detector without data in the tree | Use pytest's `tmp_path` to generate the data in the temp directory; do NOT create stray files in the project tree | `ERR.33`, `KILL.13` | `tests/test_static_rules.py` |
+| Stray files appear in the project tree created by P0 | Delete the stray files, write the deleted file names into the handover record, do NOT relax the rules just to fit the stray files | `ERR.33`, `KILL.13` | the whole project tree |
+
+### Table 3d-2. Decisions based on the result of each check
+
+| Check result | Inference | Next action | Report code |
+|---|---|---|---|
+| `rg -c "^## RULE"` returns 7 | All seven rules are present | Move on to measuring the length | None |
+| `rg -c "^## RULE"` returns less than 7 | A rule is missing or rules were wrongly merged | Add or re-split the rule item, count again | `ERR.2` |
+| `rg -c "^## RULE"` returns more than 7 | There are duplicate-meaning items outside the seven rules | Merge down to 7, count again | `ERR.2` |
+| The `AGENTS.md` line count is less than 100 | The file rule is met | Run the full pytest | None |
+| The line count is 100 or more | The file rule is violated | Shorten then measure again | `ERR.3` |
+| `py -m pytest -q -rs` does not fail and there are skips with a reason | The correct state after P0 | Write the skip reasons into the handover record | None |
+| pytest is red at loop 1 because `AGENTS.md` does not exist | Red in the correct sense | Do not fix the test, move on to GREEN | None |
+| pytest is red at loop 2 because `src/chatbot/domain` does not exist | Red in the correct sense | Create the empty directory at GREEN | None |
+| pytest is red because of `SyntaxError`, `ImportError`, `ModuleNotFoundError` | Red in the wrong sense | Fix immediately within the CLEAN loop | `ERR.8` |
+| `test_no_secret_prefix_in_sources` is red because the test file itself contains the pattern | The scan self-incriminates | Build the pattern by concatenating the two constants at the top of the file | `ERR.14` |
+| `test_detector_flags_oversized_file_in_temp_dir` is red | A bug in the test code or in the line counting | Fix it in CLEAN, do not touch the story | `ERR.8` |
+| `test_domain_has_no_framework_import` is red because of real P3 files | The DDD rule is wrong | Report it, do NOT fix across milestones | `ERR.9`, `KILL.2` |
+| `test_static_files_under_100_lines` is red because of real P7 files | The file rule is wrong | Report it, do NOT fix across milestones | `ERR.10`, `KILL.10` |
+| `test_expected_paths_present_or_not_started` skips while the tree is already complete | The skip condition is too broad | Tighten the skip condition, run again | `ERR.13` |
+| `py -m pytest -q` reports `collected 0 items` after P1 | Collection configuration is missing | Add `pytest.ini` with `pythonpath = .` | `ERR.15` |
+| `pytest` mistakenly scans files inside `.venv` | `testpaths` is missing in `pytest.ini` | Report and wait for P1 to fix the configuration | `ERR.35` |
+
+### Table 3d-3. Decisions based on the ten prompt milestones
+
+| Milestone | B2 tree state | opencode action | Stop condition |
+|---|---|---|---|
+| After P0 | `AGENTS.md` and the three test files exist in `tests/` | Hand over P0, create no extra file | Do not pre-create the files of P1 |
+| After P1 | `run.py`, `requirements.txt`, `pytest.ini`, `.env.example` exist | Run `py -m pytest -q`, the expected result is 0 failures | If tests break because the environment is missing then `ERR.6` |
+| After P2 | `config/*` exists | Run `test_load_settings.py` | If red, stop, do not write P3 |
+| After P3 | `domain/*` exists | Run `test_trim_history.py` and `test_domain_purity.py` with no remaining skips | If red because of purity then `ERR.9` |
+| After P4 | `application/*` exists | Run the four test files of milestone P4, including `test_first_run_flow.py` | If red, stop, do not write P5 |
+| After P5 | `infrastructure/*` exists | Run the six infrastructure test files | If red, stop |
+| After P6 | `interface/*` exists, `run.py` runnable | Run `test_routes.py` and the full `test_first_run_flow.py` | If red, stop |
+| After P7 | `static/*` exists | Run `test_static_rules.py` with no remaining skips at the two interface tests | If red then `ERR.10` |
+| After P8 | `system-prompt.txt` exists, the name-asking scenario runs | Write the manual run result into the handover record | If the scenario does not pass then `ERR.20` |
+| After P9 | Everything green | Final acceptance | If any item is red then stop |
+
+### Table 3d-4. Decisions for the six mandatory cases covered in the P0 scope
+
+| Case | Entry condition | Expected output | Error code or exception |
+|---|---|---|---|
+| Empty directory | No file inside `chatbot\` | Still create `AGENTS.md` and the three test files, `py -m pytest -q` does not fail | `ERR.11` if opencode concludes that it must stop because files are missing |
+| `AGENTS.md` already exists | The file exists with content different from the template | Ask before overwriting, keep the old file while there is no answer | `ERR.4`, `KILL.4` |
+| `AGENTS.md` exceeds 100 lines | The line count is 100 or more | Shorten to under 100 lines while still keeping the seven rules and the ten milestones | `ERR.3`, `KILL.3` |
+| The learner pastes a key into chat | The message contains a key-like string | Refuse to store it, point to the key entry box on the page | `ERR.5`, `KILL.7` |
+| The `py` command is missing | PowerShell does not recognise `py` | Report, deliver the text files, run no Python-dependent command | `ERR.6`, `KILL.5` |
+| PowerShell blocks the script | `Activate.ps1` is blocked by policy | Use the workaround without activation, do not elevate the global policy | `ERR.7`, `KILL.6` |
+
+### Table 3d-5. Decisions when red evidence is needed but no file may be created outside the B2 tree
+
+| Evidence need | Permitted method | Forbidden method | Error code |
+|---|---|---|---|
+| Prove the line counter catches a file over 100 lines | Generate the file in `tmp_path` then assert the counter returns that path | Create a stray file in `static/js/` | `ERR.33` |
+| Prove the module-name splitter catches a banned command | Pure-text tests with hypothetical command lines | Create a fake file in `src/chatbot/domain/` | `ERR.33` |
+| Prove the key-pattern scan catches a violation | Build the pattern by concatenating the two constants then test the string concatenation | Write the literal key pattern into the test file | `ERR.14`, `KILL.1` |
+| Prove the `domain/` directory exists | Create the empty directory | Create fake `.py` files to simulate domain content | `ERR.33`, `KILL.13` |
+| Prove the first-time key flow | Write the test contract and declare the skip state with a reason | Write `application/*` yourself to force the tests green | `ERR.11`, `KILL.2` |
+
+## ERR
+
+ERR.1. Symptom: `rg -n --fixed-strings $needle AGENTS.md` prints at least one line, or `test_no_secret_prefix_in_sources` is red with a non-empty file list. Cause: a real key or a handwritten key pattern was pasted into an example. Handling: delete it from the file, replace it with `TEST_KEY_` plus 20 `x` characters, build the pattern in the test by concatenating the two constants, do NOT print the key content into the report; if the file is already under version control, treat it as a security incident and tell the user to revoke the key at the provider. Related file: `AGENTS.md`, `tests/test_static_rules.py`.
+
+ERR.2. Symptom: `rg -c "^## RULE" AGENTS.md` differs from 7. Cause: a rule is missing, or one rule was split into two items, or there is an item outside the seven-rule list. Handling: reconcile against the seven rules fixed in section 3a, add the missing item or merge the duplicate-meaning items, count again until it equals 7. Related file: `AGENTS.md`.
+
+ERR.3. Symptom: `(Get-Content AGENTS.md | Measure-Object -Line).Lines` returns 100 or more, or `test_agents_md_under_100_lines` is red. Cause: a long example was added, or content from outside section 3a was repeated. Handling: cut the earlier examples, merge duplicate-meaning items, keep the seven rules and the ten-prompt reading-order section unchanged, measure again. Related file: `AGENTS.md`.
+
+ERR.4. Symptom: `AGENTS.md` existed beforehand and its content differs from the template. Cause: the project already has the user's own rule set. Handling: stop, present the differences between the old version and the template, ask the user to choose between full overwrite and append, do NOT overwrite by yourself. Related file: `AGENTS.md`.
+
+ERR.5. Symptom: the learner pastes an API-key-like string into the opencode conversation. Cause: role confusion, mistaking opencode for the target chatbot. Handling: refuse clearly, do NOT save it into any file, do NOT write it into a log, do NOT put it into `.env`, and point the user to the key entry box on the page `http://127.0.0.1:2610` after running `py run.py`, explaining that the key may only be asked for by the chatbot on the page. Related file: the `AGENTS.md` safety section.
+
+ERR.6. Symptom: PowerShell reports that `py` is not recognised. Cause: the Python interpreter is not installed yet or has not been added to the `PATH` environment variable. Handling: report, stop that part of the commands, guide the user to install Python 3.12 with the option to add it to `PATH`, or use the full path to the interpreter file; do NOT install anything automatically. Related file: `run.py`, `requirements.txt`.
+
+ERR.7. Symptom: `.\.venv\Scripts\Activate.ps1` is blocked by the execution policy. Cause: the PowerShell `ExecutionPolicy` does not allow scripts to run. Handling: do NOT elevate the global policy; take the workaround that needs no activation, namely `py -m venv .venv` then `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pytest -q`; if activation is unavoidable then use only `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` for the current session and state the consequence clearly. Related file: `.venv`.
+
+ERR.8. Symptom: `py -m pytest -q` is red because of `SyntaxError`, `ImportError`, `ModuleNotFoundError` or `NameError`. Cause: a syntax error in a test file, a wrong function name, or a function definition left out when splitting files. Handling: read the error line, fix it within the CLEAN loop, and run again until only the intentional red state remains. Related file: `tests/test_static_rules.py`, `tests/test_domain_purity.py`, `tests/test_first_run_flow.py`, `pytest.ini`.
+
+ERR.9. Symptom: `test_domain_has_no_framework_import` is red with a list of the form `đường/dẫn:số_dòng:tên_mô_đun`. Cause: a file inside `domain/` embeds an infrastructure library. Handling: move the I/O part to `infrastructure`, declare the interfaces in `domain/ports/`, keep only pure data types in `domain`; do NOT fix across scopes within P0. Related file: `src/chatbot/domain/`, `src/chatbot/domain/ports/`.
+
+ERR.10. Symptom: the file-rule measurement prints a path with 100 lines or more, or `test_static_files_under_100_lines` is red. Cause: several functions were merged into one file. Handling: split following the principle of one function per file, keep the function names fixed in the blueprint, every new file must have a name in the B2 tree, and measure again until nothing is printed. Related file: `tests/`, `static/js/`, `src/chatbot/`.
+
+ERR.11. Symptom: the project directory is completely empty, with no file from the B2 tree yet. Cause: the learner created the directory and immediately ran opencode. Handling: do NOT conclude that it is an error and do NOT stop; create `AGENTS.md` together with the three test files in `tests/`, run `py -m pytest -q` and expect no failures; do NOT pre-create the files of P1 or later. Related file: `AGENTS.md`, `tests/`.
+
+ERR.12. Symptom: PowerShell reports that `rg` is not recognised. Cause: the machine does not yet have a fast text search tool installed. Handling: use `Select-String` for the text-based measurements, for example `(Select-String -Path AGENTS.md -Pattern '^## RULE').Count`, and state clearly in the handover record that the check used a substitute tool; do NOT install a new package without permission. Related file: `AGENTS.md`, the handover record.
+
+ERR.13. Symptom: `test_expected_paths_present_or_not_started` reports a skip while `run.py` and the `static/` directory already exist but some path in `
+
+# 4. Format:
+
+## PRE
+
+- PRE: opencode has read blueprint v4 in full and part P0 (sections 1 through 3 of this prompt). If it has not, stop and write no file.
+- PRE: the working directory is the chatbot root directory, on Windows 11, using PowerShell.
+- INV: the only file produced within the P0 scope is `AGENTS.md`.
+- INV: `AGENTS.md` contains exactly 7 rules, numbered `L1` to `L7`, each rule on a single line beginning with `L<n>`.
+- INV: the line count of `AGENTS.md` is < 100, measured with `(Get-Content AGENTS.md | Measure-Object -Line).Lines`.
+- INV: every Vietnamese sentence in `AGENTS.md` is written with full diacritics, not in the unaccented style.
+- KILL: if the root directory cannot be determined, print `STOP: thiếu thư mục gốc` and stop, do not create a temporary file anywhere.
+
+## POST
+
+- POST: every file in the results table exists on disk, at the exact path, with no leftover `.tmp` temporary files.
+- POST: the final report has exactly three blocks: FILE TABLE, TEST RESULTS, 3-LINE CONCLUSION. No fourth block.
+- POST: every assertion in the report must carry the command that was run or the path as proof.
+
+## Decision table
+
+| Case | What opencode must do | Short reason |
+|---|---|---|
+| Directory empty, no `AGENTS.md` yet | Create a new one following the template in section 5, do not ask | This is the normal state on the first run |
+| `AGENTS.md` already exists and still has exactly 7 rules | Keep it unchanged, print the table, ask first if an edit is needed | Do not overwrite the student's work |
+| `AGENTS.md` already exists but rules are missing or extra | Ask for confirmation, then overwrite | The decision belongs to the student |
+| The `AGENTS.md` draft exceeds 100 lines | Cut it down to at most 96 lines, then report done | INV violation of rule L4 |
+| The student pastes an API key into chat | Refuse, remind them to open `http://127.0.0.1:2610` and enter it in the dialog | The key is only entered on the page, never through chat |
+| The machine has no `py` command | Report `STOP: thiếu lệnh py`, explain how to install Python and add PATH, do not install it yourself | Missing base tooling; installing on your own is a risk |
+| PowerShell blocks running the activation script | Report the error and give the equivalent command that calls `.\.venv\Scripts\python.exe -m pytest -q` directly | Execution policy, not a code error |
+| The student asks for files outside the B2 list | State clearly which file would be added and require the list to be updated first | The file list is the allowlist |
+
+## Final report format
+
+File table, columns in exactly this order, no extra columns:
+
+| File | Line count | Rule L4 | Verification command | Result |
+|---|---|---|---|---|
+| `AGENTS.md` | 69 | PASS | `(Get-Content AGENTS.md \| Measure-Object -Line).Lines` | OK |
+
+Test results, in the form of a run table:
+
+| Run | Command | Red tests | Green tests | Status |
+|---|---|---|---|---|
+| 1 | `py -m pytest -q` | 1 | 4 | RED |
+| 2 | `py -m pytest -q` | 0 | 5 | GREEN |
+
+3-line conclusion, exactly three lines:
+
+```
+Tệp: 1 tệp trong phạm vi P0, AGENTS.md, 69 dòng.
+Luật: 7/7 luật L1..L7 có mặt, quét bằng rg.
+Test: 0 đỏ -> 5 xanh, py -m pytest -q.
+```
+
+## Formal rules for the report section
+
+- No long summary, no greeting, no apology, no re-explaining the blueprint.
+- Every table row carries real figures taken from the command that was just run; an invented value is a serious error.
+- For every case in the Decision table that did not occur, write the case name explicitly instead of staying silent.
+- If there are any changes outside `AGENTS.md`, list the files with reasons; by default there are NO other changes.
+
+# 5. Example:
+
+## 5.1. The directory before starting
+
+```powershell
+PS C:\hoc\chatbot> Get-ChildItem -Force
+```
+
+Expected result: either nothing is printed (empty directory), or only files that already existed; there must be NO `AGENTS.md`.
+
+## 5.2. The complete content of `AGENTS.md`
+
+The version below is the real content of the file, Vietnamese with full diacritics, 69 lines.
+
+```markdown
+# AGENTS.md - chatbot web, blueprint v4
+
+## 1. Thứ tự đọc 10 prompt
+
+- Đọc đúng thứ tự: P0, P1, P2, P3, P4, P5, P6, P7, P8, P9.
+- Không bỏ P0. Không viết P7 trước P6.
+
+## 2. Bảy luật bắt buộc
+
+L1 KISS: giải pháp đơn giản nhất là giải pháp đúng; chỉ thêm tính năng khi có test.
+
+L2 DDD: interface -> application -> domain; infrastructure -> domain. domain không import flask, langchain, openai, dotenv, os, pathlib, json, không mở tệp.
+
+L3 TDD: viết test trước, chạy thấy ĐỎ, viết lượng mã nhỏ nhất làm XANH, rồi dọn.
+
+L4 Mỗi hàm hoặc mỗi lớp một tệp; mỗi tệp dưới 100 dòng, kể cả tệp test và tệp js.
+
+L5 Cấu hình và khóa API chỉ nằm trong tệp .env; không ghi cứng trong mã, không ghi cứng tên biến.
+
+L6 An toàn: không ghi khóa API vào log, bộ nhớ, phản hồi hay thông điệp lỗi; hiển thị bằng chuỗi con của React; chỉ chấp nhận 127.0.0.1 và localhost.
+
+L7 Windows 11, chỉ PowerShell; gọi Python bằng py; máy chủ chạy bằng Start-Process.
+
+## 3. Danh sách tệp được phép tạo
+
+- gốc: AGENTS.md, .env, .env.example, .gitignore, requirements.txt, pytest.ini, run.py, system-prompt.txt, memory.json
+- src/chatbot/: __init__.py, config/, domain/, application/, infrastructure/, interface/
+- config/: settings.py, load_settings.py, settings_error.py
+- domain/: message.py, trim_history.py, errors.py, ports/memory_repository.py, ports/chat_model.py, ports/api_key_store.py
+- application/: send_message.py, reset_conversation.py, configure_api_key.py, get_setup_status.py, validate_session_id.py, validate_message.py, validate_api_key.py
+- infrastructure/: atomic_write_json.py, json_memory_repository.py, langchain_chat_model.py, load_system_prompt.py, env_api_key_store.py, atomic_write_text.py, map_openai_error.py, mask_secret.py
+- interface/: create_app.py, json_error.py, require_json.py, require_localhost.py, routes/health_route.py, routes/setup_status_route.py, routes/setup_route.py, routes/chat_route.py, routes/reset_route.py
+- static/: index.html, js/session_id.js, js/api_status.js, js/api_setup.js, js/api_chat.js, js/api_reset.js, js/message_bubble.js, js/setup_dialog.js, js/chat_view.js, js/send_handler.js, js/main.js
+- tests/: test_load_settings.py, test_trim_history.py, test_validators.py, test_send_message.py, test_reset_conversation.py, test_configure_api_key.py, test_atomic_write.py, test_json_memory_repository.py, test_env_api_key_store.py, test_langchain_chat_model.py, test_map_openai_error.py, test_load_system_prompt.py, test_routes.py, test_first_run_flow.py, test_domain_purity.py, test_static_rules.py, fakes/fake_memory_repository.py, fakes/fake_chat_model.py, fakes/fake_api_key_store.py
+
+## 4. Luồng khóa API lần đầu
+
+1. py run.py khởi động server tại http://127.0.0.1:2610 khi CHƯA có khóa; không được sập.
+2. Trang gọi GET /api/setup/status.
+3. {"configured": false} hiện hộp thoại MUI "Nhập khóa API" gồm ô mật khẩu và nút Lưu.
+4. Học viên dán khóa, bấm Lưu => POST /api/setup với {"api_key": "<khóa>"}.
+5. Server kiểm hình thức khóa, ghi nguyên tử dòng OPENAI_API_KEY= vào .env, cập nhật bộ nhớ tiến trình, trả {"ok": true}.
+6. Trang đóng hộp thoại, hiện khung chat; chat chạy ngay, không khởi động lại.
+7. Lần sau status trả {"configured": true} => vào thẳng khung chat.
+8. Khóa chỉ nằm trong .env; không vào log, không vào memory.json, không vào phản hồi.
+
+## 5. Luật hành xử của opencode
+
+- KHÔNG hỏi học viên khóa API trong cuộc hội thoại này.
+- KHÔNG nhận khóa API dán từ học viên; chatbot tự hỏi khóa trên trang.
+- Học viên dán khóa vào chat: từ chối, nhắc mở http://127.0.0.1:2610 và nhập ở hộp thoại.
+- AGENTS.md đã tồn tại: hỏi trước khi ghi đè; chỉ ghi đè khi được xác nhận.
+- Bản thảo AGENTS.md vượt 100 dòng: cắt xuống dưới 100 dòng trước khi báo xong.
+- Không tạo tệp ngoài danh sách mục 3; cần tệp mới thì sửa mục 3 trước.
+- Không dùng innerHTML hay dangerouslySetInnerHTML.
+- Sau mỗi thay đổi: chạy py -m pytest -q rồi báo số test xanh.
+
+## 6. Kiểm chứng nhanh
+
+- rg "L1|L2|L3|L4|L5|L6|L7" AGENTS.md => 7 luật.
+- (Get-Content AGENTS.md | Measure-Object -Line).Lines => nhỏ hơn 100.
+- rg "sk" -g "!.venv" . => không dòng nào chứa khóa thật.
+```
+
+## 5.3. The refusal sentence when the student pastes a key
+
+```
+Không dán khóa API vào đây. Tôi không lưu và không ghi ra tệp khóa đó.
+Khi bạn chạy `py run.py` và mở http://127.0.0.1:2610, trang sẽ hiện hộp thoại
+"Nhập khóa API". Bạn dán khóa vào ô mật khẩu ở đó, bấm Lưu, và chat chạy ngay.
+```
+
+## 5.4. Sample PowerShell log with a RED run followed by a GREEN run
+
+```text
+PS C:\hoc\chatbot> rg -c "L[1-7]" AGENTS.md
+1
+PS C:\hoc\chatbot> (Get-Content AGENTS.md | Measure-Object -Line).Lines
+118
+PS C:\hoc\chatbot> py -m pytest -q
+.F... [100%]
+=========================== short test summary ============================
+FAILED tests/test_static_rules.py::test_agent_md_under_100_lines
+1 failed, 4 passed in 0.31s
+PS C:\hoc\chatbot> (Get-Content AGENTS.md | Measure-Object -Line).Lines
+96
+PS C:\hoc\chatbot> py -m pytest -q
+..... [100%]
+5 passed in 0.28s
+PS C:\hoc\chatbot> rg "sk" -g "!.venv" .
+AGENTS.md:96:rg "sk" -g "!.venv" . => không dòng nào chứa khóa thật.
+PS C:\hoc\chatbot> Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+PS C:\hoc\chatbot>
+```
+
+The only matching line in the secret scan is precisely the instruction line inside `AGENTS.md`, not a real key; the report must say this explicitly instead of staying silent.
+
+# 6. Notices:
+
+- DO NOT ask the student for the API key in this conversation; the chatbot page itself asks for it on the first run, asking here breaks the first-run flow.
+- DO NOT accept, DO NOT store, DO NOT write to any file any key the student pastes into the conversation; only point out the path of the entry page.
+- DO NOT create files outside the list in section 3 of `AGENTS.md`; every file that arises must be added to the list first.
+- DO NOT overwrite an existing `AGENTS.md` without asking; it is the student's asset, overwriting it destroys the project's rules.
+- DO NOT accept a draft that exceeds 100 lines; rule L4 has no exception for documentation files.
+- DO NOT write any content matching the real-key pattern in code, tests, logs or the report; the sample key may only take the form `TEST_KEY_` followed by 20 x's.
+- DO NOT use `innerHTML` or `dangerouslySetInnerHTML`; message content must be a React child string so that HTML characters display verbatim.
+- DO NOT write unaccented Vietnamese in any file, including documentation files; every sentence must carry full diacritics.
+- DO NOT use HTTP-calling commands other than `Invoke-RestMethod`; this ecosystem is for PowerShell only.
+- DO NOT use a shell-loading command to activate the venv; use `.\.venv\Scripts\Activate.ps1`, and be ready to use `.\.venv\Scripts\python.exe` when PowerShell blocks execution.
+- DO NOT run the server inside opencode's shell; always wrap it with `Start-Process` then `Start-Sleep -Seconds 3`.
+- DO NOT use other command-line text-search tools; use `rg` because the blueprint has settled on this tool.
+- DO NOT hardcode environment variable names in code; configuration comes only from `load_settings` and the `.env` file.
+- DO NOT add `HOST=0.0.0.0`; only `127.0.0.1` and `localhost` are accepted, otherwise every request from the network is a risk.
+- DO NOT report "xong" while `py -m pytest -q` still has red tests; the report must state the exact red count and the green count.
+- DO NOT report a line count without running the measuring command; the number in the table must be copied from the real command.
+- DO NOT install Python yourself or edit PATH yourself when `py` is missing; stop and explain, because system installation is outside the project scope.
+- DO NOT add a fourth block to the report; the report is exactly three blocks, extra content dilutes the evidence.
+- DO NOT wrap the whole content in a single code block when replying; only place files and commands in code blocks.
+
+
+Requirement B19 is a binding rule: the chatbot and all of its prompts must never contain Telegram integration, email functionality, or any external publishing capability of any kind. The system must operate as a fully self-contained conversational agent, with no code paths, UI elements, configuration options, or prompt instructions that reference Telegram bots, Telegram APIs, SMTP clients, email sending, newsletter distribution, or posting to any external service, platform, or social network. Every response, system prompt, and generated artifact must stay within the chat boundary, and no outbound message may be dispatched on behalf of the user or the system to any destination outside the immediate conversation. Developers must treat any attempted addition of messaging, mailing, or publishing features as a spec violation that fails review. Acceptance: a static scan of the codebase and prompt files finds zero references to Telegram, email, or external publishing endpoints.
+# 7. Input:
+
+The student must provide the following before opencode writes `AGENTS.md`:
+
+- The absolute path of the chatbot root directory on Windows 11, for example `C:\hoc\chatbot`. Without a path, no file is written.
+- Confirmation that the machine already has the `py` command, together with the result of `py --version`. If it is missing, opencode stops and explains how to install Python.
+- Confirmation that the machine already has PowerShell and allows running `.\.venv\Scripts\Activate.ps1`; if it is blocked, opencode uses `.\.venv\Scripts\python.exe -m pytest -q` instead.
+- The state of the directory: empty, or already containing files; if `AGENTS.md` already exists, confirm whether editing it is allowed.
+- Which branch of the behavioural rules you want to use: keep the template in section 5, or add the student's own notes.
+
+Not needed and must not be provided:
+
+- DO NOT paste the API key into the chat with opencode. The key is entered on the chatbot's own page on the first run: open `http://127.0.0.1:2610`, the "Nhập khóa API" dialog appears, paste the key into the password field, press Lưu. opencode does not need to know it and must not store its value.
+- DO NOT need to configure `PORT`, `MODEL`, `TEMPERATURE` at this point; those keys belong to P2 and P1.
+- DO NOT need sample conversation content; the key flow is already in the blueprint.
+
+# 8. OKRs (O + KRs):
+
+O: Complete the P0 scope with exactly one valid `AGENTS.md` file, with verification evidence that runs on PowerShell, containing no secrets.
+
+- KR1: `AGENTS.md` exists at the root directory and is the ONLY file created within the P0 scope; verify with `Get-ChildItem -Filter AGENTS.md`.
+- KR2: `(Get-Content AGENTS.md | Measure-Object -Line).Lines` yields a value < 100; report the exact figure, target 65 to 96 lines.
+- KR3: `rg "L1|L2|L3|L4|L5|L6|L7" AGENTS.md` returns exactly 7 rule lines; 7/7 rules present, missing 1 rule is a fail.
+- KR4: `AGENTS.md` contains all 4 mandatory blocks: the reading order P0 to P9, the file list per B2, the 8-step first-run API key flow, and opencode's behavioural rules.
+- KR5: the file list in `AGENTS.md` matches the B2 tree 100%, verified by comparing every file name and every folder name; one wrong name is a fail.
+- KR6: the RED run has real evidence in the `py -m pytest -q` log with at least 1 red test, then the GREEN run has 0 red; report both runs according to the table in section 4.
+- KR7: the GREEN run reaches 100% of tests, minimum target 5 green tests, because this `AGENTS.md` file must be checked with evidence.
+- KR8: the secret scan `rg "sk" -g "!.venv" .` detects no real key; every matching line must be explained in prose, and the value used for tests may only be `TEST_KEY_` followed by 20 x's.
+- KR9: the command checking the 100-line rule over all `*.py,*.js` prints no file name, and runs within 5 seconds.
+- KR10: every Vietnamese sentence in `AGENTS.md` has full diacritics; count 0 lines matching the unaccented pattern, for example with `rg "Khong|Doc dung|Danh sach" AGENTS.md`.
+- KR11: every case in the Decision table of section 4 is handled correctly and named in the report, every blocking question is answered within one round, no more than two re-ask rounds.
+- KR12: the final report has exactly three blocks, no greeting, no apology, no summary longer than 3 lines.
+- KR13: the time from receiving a valid Input to having the final report does not exceed 5 minutes, measured with `Measure-Command { }` around the chain of verification commands.
+

@@ -1,0 +1,1400 @@
+PROMPT P8: system-prompt.txt and the end-to-end run, first-run key flow. Paste the WHOLE text below into opencode in order P0 to P9; paste P8 only after all earlier prompts are green.
+
+# 1. Role:
+
+Educational chatbot system designer and technical prompt writer following formal spec. He acts as the end-to-end validator for the HUB-Buddy web chatbot running on Windows 11 via PowerShell, using Python invoked through the `py` command. He can read and write Python and JavaScript source code, and knows how to design a manual test scenario set with explicit pass criteria. He owns exactly three deliverables of prompt P8: the `system-prompt.txt` file following the RCIFENI-O template, the end-to-end trial run procedure in PowerShell, and the evidence matrix for every failure case. He does not rewrite the source code of P1 to P7; he only specifies expected behavior, prepares input data, and verifies results. He absolutely never uses bash commands, never uses `python3`, never uses `curl`, never uses `sudo`, never uses `source`, never uses `grep`, and never proposes `AGENTS.local.md` or any file outside the B2 directory tree. Every code block he supplies must be runnable and under 100 lines, with the language label `python` or `javascript` written right after the three backticks. Every Vietnamese string he writes carries full diacritics, while code names, command names, keyword names and paths stay in English. He uses only the short hyphen, never the em dash.
+
+# 2. Context (5W1H):
+
+**What.** P8 is the eighth prompt in the chain of ten prompts P0 to P9. The mandatory deliverables of P8 are the `system-prompt.txt` file at the project root, an end-to-end trial scenario written in PowerShell, and an evidence table attached to each failure case. P8 generates no new source code for `src/chatbot/`. P8 only defines the textual content of the system prompt and the way to prove that the whole system is correct.
+
+**Why.** A learner who reads all ten prompts can build a chatbot that runs. The learner trusts only observable evidence, not bare assertions. Therefore P8 turns every promise of the blueprint into a manual test with explicit pass criteria. Without P8, all the P0 to P7 files may be green at the unit-test level yet still break when run by hand on the first chat turn.
+
+**Who and Where.** The reader is a learner on Windows 11, opening PowerShell at the project root `chatbot/`, using opencode as a coding assistant beside the command window. The environment has been activated with `.\.venv\Scripts\Activate.ps1`, `requirements.txt` has been fully installed, and `py -m pytest -q` has been run with a green result. The local server serves at `http://127.0.0.1:2610`.
+
+**When.** P8 runs after P7, that is, when `static/` already has the MUI API key entry dialog and the chat frame. After P8 comes P9, which runs at most three rounds of debug removal and the final acceptance. So P8 is where integration defects are detected and the error list is handed over verbatim to P9.
+
+**How.** There are two parallel verification paths. The machine path uses `Invoke-RestMethod` for `GET /api/health` and `GET /api/setup/status`, and `Invoke-RestMethod -Method Post` for `/api/setup` with a JSON body. The manual path uses the browser to open `http://127.0.0.1:2610`. Both paths record results in the evidence table.
+
+**Prompt shape.** P8 uses the RCIFENI-O template: role, five-questions-one-answer context, formal spec instructions with PRE, POST, INV, ERR, KILL, a decision table, sample code, evidence. The `system-prompt.txt` file uses that same template as the text loaded into the system dialog.
+
+**Constraints.** The text in `system-prompt.txt` is accented Vietnamese, concise, without storytelling. The API key absolutely never appears in this text. The sample key used in the test always reads `TEST_KEY_` plus twenty x characters. The settled design decision: `system-prompt.txt` is read exactly once per server start, so editing this file requires a server restart to take effect. When the port is busy, the server prints a Vietnamese message suggesting to change `PORT` in `.env`, then exits with code 1.
+
+**Regarding the first-time API key flow.** On the first run, `GET /api/setup/status` returns `{"configured": false}`, and the interface shows the API key entry dialog before the chat frame. The learner pastes the key and clicks Save; the browser calls `POST /api/setup`; the server validates the key format with `validate_api_key`, writes atomically into `.env`, updates the process memory, and returns `{"ok": true}`. Then the chat frame works immediately. Because `system_prompt.txt` is read only at startup, `LangChainChatModel` does not depend on when the key is saved, and the first chat turn after saving the key still uses exactly the system prompt that was loaded. P8 must prove exactly this chain with the scenarios B-01 to B-08.
+
+# 3. Instructions (formal-spec):
+
+## 3a. Conditions and invariants
+
+**PRE.**
+
+- PRE.1 Check that the directory tree matches B2: run `Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName` and compare; `system-prompt.txt` must sit in the root directory together with `run.py`.
+- PRE.2 Check that the system prompt file exists and is readable: `Test-Path .\system-prompt.txt` must return `True`.
+- PRE.3 Check that the file is not empty: `(Get-Content .\system-prompt.txt -Raw).Trim().Length -ge 200` must be true.
+- PRE.4 Check that `load_system_prompt` returns the exact file content: `py -c "from src.chatbot.infrastructure.load_system_prompt import load_system_prompt; print(load_system_prompt('system-prompt.txt'))"` prints the content with full diacritics.
+- PRE.5 Check that the virtual environment is activated: `Test-Path .\.venv\Scripts\Activate.ps1` must be `True`.
+- PRE.6 Check that all tests are green before running by hand: `py -m pytest -q` must contain no `failed`.
+- PRE.7 Check that no old server still holds the port: `Get-NetTCPConnection -LocalPort 2610 -ErrorAction SilentlyContinue` must print nothing, or you already know which process holds it.
+- PRE.8 Check that the key does not yet exist in `.env`, to prepare the no-key case: `.env` or the line `OPENAI_API_KEY=` must be empty or absent.
+- PRE.9 Check that `requirements.txt` has `langchain-openai`, `python-dotenv`, `flask`, `pytest`: `Select-String -Path .\requirements.txt -Pattern "langchain-openai"` must return a result.
+- PRE.10 Check that `.gitignore` contains `.env`: `Select-String -Path .\.gitignore -Pattern "^\.env$"` must match.
+- PRE.11 Check that `memory.json` is clean before the clean run: `Test-Path .\memory.json` returning `True` or `False` is both acceptable, but if present it must be valid JSON, verified with `py -c "import json;json.load(open('memory.json',encoding='utf-8'));print('OK')"`.
+- PRE.12 Check that port 2610 lies in the permitted range and that `HOST` is not `0.0.0.0`: `Select-String -Path .\.env -Pattern "^HOST=127.0.0.1$"` must match or `.env` must lack that line.
+- PRE.13 Check that the test key uses only the formal dummy shape: the string `TEST_KEY_` plus twenty x characters, 29 characters long, satisfying `validate_api_key`.
+- PRE.14 Check that no old `python` process still holds the port when running a second time: know the list from `Get-Process python -ErrorAction SilentlyContinue` in advance, for comparison.
+
+**POST.**
+
+- POST.1 After running B-01 to B-08, the `system-prompt.txt` file exists, carries full Vietnamese diacritics, and is at least 200 characters long: `(Get-Content .\system-prompt.txt -Raw).Length -ge 200` must be true.
+- POST.2 After B-01, `GET /api/health` returns `{"ok": true}`: `Invoke-RestMethod http://127.0.0.1:2610/api/health | ConvertTo-Json` prints `ok` as `true`.
+- POST.3 After B-02, `GET /api/setup/status` returns `{"configured": false}` when `.env` has no key: the command prints `configured` as `False`.
+- POST.4 After B-03 and B-04, `POST /api/setup` returns `{"ok": true}` and the `.env` file has exactly one line `OPENAI_API_KEY=TEST_KEY_` plus twenty x characters: `(Select-String -Path .\.env -Pattern "^OPENAI_API_KEY=").Count` must equal `1`.
+- POST.5 After B-04, querying `GET /api/setup/status` again returns `{"configured": true}` without restarting the server.
+- POST.6 After B-05, the chat frame is displayed and the question "Tên em là Lan" receives a meaningful answer with full Vietnamese diacritics.
+- POST.7 After B-06, the question "Em tên gì?" receives an answer containing exactly the name Lan; the pass criterion is that the answer string contains `Lan`.
+- POST.8 After B-07, the "Cuộc trò chuyện mới" button empties the chat frame and the `memory.json` file no longer holds the old session key.
+- POST.9 After B-08, restarting the server and then calling `GET /api/setup/status` still returns `{"configured": true}` without re-entering the key.
+- POST.10 After B-09, editing `system-prompt.txt` and restarting the server makes the answer reflect the new content, proving the read-at-startup mechanism.
+- POST.11 After B-10, every failure case in the L-1 to L-12 matrix has one evidence row in the table, comprising the status code, the observed message and a pass or fail conclusion.
+- POST.12 After the entire test session, `py -m pytest -q` is still green and the 100-line rule check prints no file names.
+- POST.13 The P8 acceptance report lists each observed error code; no code is silently skipped.
+
+**INV.**
+
+- INV.1 The text in `system-prompt.txt` is Vietnamese with full diacritics and uses no em dash.
+- INV.2 The bot's role in the system prompt is a study advisor named HUB-Buddy, not a general-purpose assistant.
+- INV.3 The system prompt must have all six blocks: role, scope, tone, constraints, answering style, prohibited actions.
+- INV.4 The system prompt contains no API key string, no `.env` file name, and no port address.
+- INV.5 The system prompt is between 200 and 4000 characters long so that `validate_message` and the memory can handle it.
+- INV.6 `system-prompt.txt` may be read only once per server start, through `load_system_prompt`.
+- INV.7 If `system-prompt.txt` is missing or empty, `load_system_prompt` returns the default Vietnamese text and the server does not crash.
+- INV.8 Editing the content of `system-prompt.txt` while running changes no behavior until the server restarts.
+- INV.9 The API key lives only in `.env` and process memory, never in logs, never in `memory.json`, never in HTTP responses.
+- INV.10 In every result printed on screen and every piece of evidence written into the report, the key is masked with `mask_secret` or only its last four characters are shown.
+- INV.11 The test scenario uses the formal dummy key `TEST_KEY_` plus twenty x characters, never a real key.
+- INV.12 The 401 failure case arises on the first chat turn and must reopen the API key entry dialog with the message "Khóa API không đúng".
+- INV.13 The 503 failure case on quota exhaustion displays "Hệ thống đang quá tải, thử lại sau" and does not lose the existing history.
+- INV.14 The 502 failure case on network loss displays "Không kết nối được dịch vụ mô hình" and still allows typing to continue.
+- INV.15 Busy-port case: the server prints a Vietnamese message suggesting to change `PORT` in `.env`, then exits with exit code 1, without hanging the window.
+- INV.16 A corrupt `memory.json` is renamed to `memory.json.corrupt-<timestamp>` and started empty, without a crash and without losing the old data from disk.
+- INV.17 When two tabs use the same `session_id`, the history still reads consistently and does not duplicate messages from the same send.
+- INV.18 Input messages in accented Vietnamese and emoji are displayed verbatim, without losing diacritics and without showing replacement character codes.
+- INV.19 A message containing an HTML tag such as `<script>` is displayed verbatim as a child string of the React element, and that tag does not execute.
+- INV.20 Every Python and JavaScript file in the project has under 100 lines, verified with the recursive PowerShell scan command in B11.
+- INV.21 Each function or class lives in exactly one file; `system-prompt.txt` contains only text, no code.
+- INV.22 The DDD principles stay intact: interface calls application, application calls domain, infrastructure implements the ports of domain, and domain imports neither flask, langchain, openai, dotenv nor environment variables.
+- INV.23 The TDD principles stay intact: every new behavior must have a test first; P8 adds no new behavior, so it adds no new test file outside its scope.
+- INV.24 All configuration goes through the frozen `Settings` class; no scattered environment-variable reads in business code.
+- INV.25 The mandatory order of a chat turn is: check session, check message, check key, read memory, trim history, call the model, and only then write the two messages to memory.
+- INV.26 If the model errors, no message from that turn may be added to `memory.json`.
+- INV.27 If the model returns an empty string, return code `empty_reply` with status 502 and write no message to memory.
+- INV.28 A request body exceeding 16 KB is rejected with code 413 and a Vietnamese message, without crashing the server.
+- INV.29 A missing `Content-Type: application/json` returns 415, a corrupt JSON body returns 400, and both return the standard error JSON.
+- INV.30 A request from outside localhost to `/api/setup` is rejected with code 403 and error code `forbidden`.
+- INV.31 Every error returns exactly the key pair `{"error": "<mã>", "message": "<tiếng Việt>"}` and never returns a stack trace.
+- INV.32 Each error code in the L-1 to L-12 matrix matches exactly one code in the route table of blueprint B7.
+- INV.33 The test runs on Windows 11 with PowerShell, uses no bash command, and the server is started with `Start-Process` rather than running in the shell of opencode.
+- INV.34 After each edit to `system-prompt.txt`, the mandatory check step is to restart the server and then try B-05; if forgotten, the acceptance conclusion is a fail.
+- INV.35 The evidence report states the time point, the command run, the observed result and the pass criterion; it must not write "đã kiểm tra" without an accompanying observation.
+
+**ERR.** Every error below must be recorded in the evidence table with its code, observed message and conclusion.
+
+| code | condition | expected message | where to check |
+|---|---|---|---|
+| ERR.1 | `.env` lacks the key line at startup | the server still comes up, `configured` is false | B-01, B-02 |
+| ERR.2 | malformed key when saving |400 `invalid_api_key` | B-04b |
+| ERR.3 | well-formed key but OpenAI rejects it | 401, the dialog reopens with "Khóa API không đúng" | L-2 |
+| ERR.4 | quota exhausted | 503 "Hệ thống đang quá tải, thử lại sau" | L-3 |
+| ERR.5 | network lost midway | 502 "Không kết nối được dịch vụ mô hình" | L-4 |
+| ERR.6 | port 2610 busy | prints a suggestion to change `PORT`, exit code 1 | L-5 |
+| ERR.7 | `system-prompt.txt` missing | uses the default text, no crash | L-6 |
+| ERR.8 | `system-prompt.txt` empty | uses the default text, no crash | L-7 |
+| ERR.9 | `memory.json` corrupt | renamed to a corrupt file with a timestamp suffix, starts empty | L-9 |
+| ERR.10 | corrupt JSON body | 400 with the standard error code | L-11 |
+| ERR.11 | missing `Content-Type` | 415 | L-12 |
+| ERR.12 | body over 16 KB | 413 | L-13 |
+| ERR.13 | model returns an empty string | 502 `empty_reply` | L-10 |
+| ERR.14 | empty or malformed session | 400 `invalid_session` | L-8 |
+| ERR.15 | empty message or over 4000 characters | 400 `invalid_message` | L-8 |
+
+**KILL.** Stop immediately and report, without fixing the source code yourself, when any of the following conditions occurs.
+
+- KILL.1 `py -m pytest -q` has a failing test before B-01 starts.
+- KILL.2 The 100-line rule check prints some file name, because every file must be under 100 lines.
+- KILL.3 `system-prompt.txt` does not exist or is shorter than 200 characters, because PRE.2 and PRE.3 are not met.
+- KILL.4 `POST /api/setup` returns 500 `save_failed`, because writing `.env` was permission-denied and must be handled at P9.
+- KILL.5 A real key, or a key beginning with a provider prefix, is found in logs, in `memory.json`, or in a response.
+- KILL.6 `HOST` in `.env` is `0.0.0.0`, because `load_settings` must reject it and P2 is responsible.
+- KILL.7 An input message containing an HTML tag is displayed and that tag actually executes, because it violates INV.19 and belongs to P7.
+- KILL.8 After B-08, `GET /api/setup/status` returns `configured` as false, because the key must persist after the restart.
+- KILL.9 Any file that would have to be created lies outside the B2 directory tree.
+- KILL.10 The validator asks to run a bash command, `python3`, `curl`, `sudo`, `source` or `grep`.
+
+## 3b. Short glossary
+
+Each term below is defined exactly once here and used with that meaning throughout the rest.
+
+| term | meaning |
+|---|---|
+| opencode | coding assistant that runs in the command window, which the user employs to generate code from the ten prompts |
+| API | programming interface for calling an external service, here the OpenAI answering model service |
+| endpoint | specific path at which the server accepts a certain kind of request, for example `/api/chat` |
+| venv | Python virtual environment that separates the project's libraries from the system, created with `py -m venv .venv` |
+| pytest | tool that runs automated tests for Python, invoked with `py -m pytest -q` |
+| DDD | domain-driven design, layered so that the dependency arrows run only from interface down to application and then down to domain |
+| TDD | process of writing the test first, then the minimal code to make the test green, then improving |
+| MUI | React component set inspired by Material Design, loading the UMD build from a CDN, with no build step required |
+| formal spec | specification-writing style that uses preconditions PRE, postconditions POST, invariants INV, errors ERR, kill conditions KILL and numbered steps |
+
+## 3.BLUEPRINT. Blueprint v4 (verbatim, shared by all 10 prompts)
+# BLUEPRINT v4: web chatbot, 10 prompts, DDD, TDD, MUI, first-time API key entry on the page
+
+User lock-in 2026-10-07: the prompt IS the blueprint; an AI that reads all 10 prompts (P0 through P9) can build the chatbot; each prompt is at least 5,000 words, written in formal specification style, covering every case; the first thing to do when the chatbot runs for the first time is TO ASK FOR THE API KEY, send it to the server, the server stores it, and then it runs.
+
+## B1. Goal and first-run flow
+- Platform: Windows 11, PowerShell, Python invoked via `py`, coding assistant is opencode, responding model is `gpt-4o-mini` via the OpenAI API (external API).
+- First-run flow:
+  1. The learner runs `py run.py`; the server starts at `http://127.0.0.1:2610` WHEN THERE IS NO API KEY YET (must not crash).
+  2. The browser opens the page; `main.js` calls `GET /api/setup/status`.
+  3. It returns `{"configured": false}` ⇒ show the MUI dialog "Nhập khóa API" (password field + Save button).
+  4. The learner pastes the key, clicks Save ⇒ `POST /api/setup` with `{"api_key": "<key>"}`.
+  5. The server validates the key format, writes it into the `.env` file (line `OPENAI_API_KEY=`) atomically, updates the process memory, returns `{"ok": true}`; it must NEVER return the key.
+  6. The page closes the dialog and shows the chat frame; chat runs immediately, no restart needed.
+  7. Subsequent runs: `status` returns `{"configured": true}` ⇒ go straight to the chat frame.
+- The key lives only in `.env`; not in logs, not in `memory.json`, not in responses, not in errors.
+
+## B2. Directory tree (target)
+```
+chatbot/
+  AGENTS.md  .env  .env.example  .gitignore  requirements.txt  pytest.ini  run.py  system-prompt.txt  memory.json
+  src/chatbot/
+    __init__.py
+    config/          settings.py  load_settings.py  settings_error.py
+    domain/          message.py  trim_history.py  errors.py  ports/memory_repository.py  ports/chat_model.py  ports/api_key_store.py
+    application/     send_message.py  reset_conversation.py  configure_api_key.py  get_setup_status.py  validate_session_id.py  validate_message.py  validate_api_key.py
+    infrastructure/  atomic_write_json.py  json_memory_repository.py  langchain_chat_model.py  load_system_prompt.py
+                     env_api_key_store.py  atomic_write_text.py  map_openai_error.py  mask_secret.py
+    interface/       create_app.py  json_error.py  require_json.py  require_localhost.py
+                     routes/health_route.py  routes/setup_status_route.py  routes/setup_route.py  routes/chat_route.py  routes/reset_route.py
+  static/            index.html  js/session_id.js  js/api_status.js  js/api_setup.js  js/api_chat.js  js/api_reset.js
+                     js/message_bubble.js  js/setup_dialog.js  js/chat_view.js  js/send_handler.js  js/main.js
+  tests/             test_load_settings.py  test_trim_history.py  test_validators.py  test_send_message.py  test_reset_conversation.py test_configure_api_key.py  test_atomic_write.py  test_json_memory_repository.py  test_env_api_key_store.py
+                     test_langchain_chat_model.py  test_map_openai_error.py  test_load_system_prompt.py  test_routes.py  test_first_run_flow.py
+                     test_domain_purity.py  test_static_rules.py  fakes/fake_memory_repository.py  fakes/fake_chat_model.py  fakes/fake_api_key_store.py
+```
+- Rule: ONE FUNCTION (or one class) PER FILE; EVERY FILE UNDER 100 LINES (including test files and js files). `__init__.py` may be empty.
+- Dependency arrows: interface → application → domain; infrastructure → domain (implements ports). domain MUST NOT import flask, langchain, openai, dotenv, os.environ, files.
+
+## B3. Configuration (file `.env`, read by `load_settings`)
+| key | default | constraint |
+|---|---|---|
+| OPENAI_API_KEY | empty | may be empty at startup; written by `/api/setup` |
+| OPENAI_MODEL | gpt-4o-mini | non-empty string |
+| OPENAI_TEMPERATURE | 0.3 | real number 0.0 to 2.0 |
+| OPENAI_TIMEOUT | 30 | integer 1 to 300 (seconds) |
+| HOST | 127.0.0.1 | MUST NOT accept 0.0.0.0; only 127.0.0.1 or localhost |
+| PORT | 2610 | integer 1024 to 65535 |
+| MEMORY_FILE | memory.json | valid relative path |
+| MAX_MESSAGES | 5 | integer 1 to 50 |
+| SYSTEM_PROMPT_FILE | system-prompt.txt | path |
+- `Settings` is a frozen dataclass with exactly the nine fields above (API key is `openai_api_key: str`).
+- Invalid value ⇒ `SettingsError` with a Vietnamese message naming the KEY NAME and the accepted value; MUST NOT print the API key value.
+- Missing `.env` file ⇒ use defaults, no error. `#` comment lines and blank lines are ignored.
+
+## B4. Domain
+- `Message`: frozen dataclass `role: str` (only `"human"` or `"ai"`), `content: str` (non-empty). Wrong ⇒ `ValueError`.
+- `trim_history(messages: list[Message], limit: int) -> list[Message]`: returns the LAST `limit` messages, preserving order; `limit <= 0` ⇒ `ValueError`; empty list ⇒ empty; fewer than `limit` ⇒ return all; does not modify the input list.
+- `errors.py`: `ApiKeyMissing`, `InvalidApiKey`, `InvalidMessage`, `InvalidSession`, `UpstreamError(status: int, message: str)`; all inherit `ChatbotError(Exception)`.
+- Ports (abstract classes `abc.ABC`):
+  - `MemoryRepository`: `get(session_id: str) -> list[Message]`, `append(session_id: str, messages: list[Message]) -> None`, `reset(session_id: str) -> None`.
+  - `ChatModel`: `reply(system_prompt: str, history: list[Message], user_text: str) -> str`.
+  - `ApiKeyStore`: `is_configured() -> bool`, `get() -> str`, `save(api_key: str) -> None`.
+
+## B5. Application (use cases, one function per file)
+- `validate_session_id(session_id) -> str`: matches `^[A-Za-z0-9-]{8,64}$`, otherwise `InvalidSession`.
+- `validate_message(text) -> str`: trims leading and trailing whitespace; empty ⇒ `InvalidMessage`; longer than 4000 characters ⇒ `InvalidMessage`.
+- `validate_api_key(api_key) -> str`: trims whitespace; length 20 to 200; only printable ASCII characters, NO whitespace inside; wrong ⇒ `InvalidApiKey`. Do NOT check the vendor prefix.
+- `get_setup_status(store) -> dict`: `{"configured": store.is_configured()}`.
+- `configure_api_key(store, api_key) -> None`: `store.save(validate_api_key(api_key))`.
+- `send_message(repo, model, store, system_prompt, max_messages, session_id, text) -> str`:
+  1. `sid = validate_session_id(...)`, `msg = validate_message(...)`.
+  2. `store.is_configured()` false ⇒ `ApiKeyMissing`.
+  3. `history = trim_history(repo.get(sid), max_messages)` (if empty, skip trimming).
+  4. `reply = model.reply(system_prompt, history, msg)`.
+  5. `repo.append(sid, [Message("human", msg), Message("ai", reply)])` ONLY after `reply` exists; a model error ⇒ write NOTHING to memory.
+  6. return `reply`.
+- `reset_conversation(repo, session_id) -> None`: validate `session_id`, then `repo.reset(sid)`; resetting a non-existent session is a silent success.
+
+## B6. Infrastructure
+- `atomic_write_text(path, text)`: writes to a temp file in the same directory then `os.replace`; creates the parent directory if missing; on error ⇒ delete the temp file, rethrow the error.
+- `atomic_write_json(path, data)`: `json.dumps(ensure_ascii=False, indent=2)` then `atomic_write_text`.
+- `JsonMemoryRepository(path)`: uses `threading.Lock`; file format `{"<session_id>": [{"role": "human", "content": "..."}]}`; missing file ⇒ empty; corrupt file (invalid JSON) ⇒ rename to `memory.json.corrupt-<timestamp>` then start empty, MUST NOT crash; `append` reads then writes atomically within the same lock; stores ALL messages (trimming happens only when reading for the model).
+- `load_system_prompt(path) -> str`: reads UTF-8; missing file ⇒ returns a short Vietnamese default, MUST NOT crash; empty file ⇒ also the default.
+- `EnvApiKeyStore(env_path)`: `is_configured()` is true exactly when `get()` is non-empty; `get()` reads `OPENAI_API_KEY` from the `.env` file (and from `os.environ` if the file is missing); `save(key)` rewrites the `.env` file keeping the other lines intact, replacing or appending exactly one line `OPENAI_API_KEY=<key>`, writes atomically, updates `os.environ`; write error ⇒ rethrow, MUST NOT leave a half-written file.
+- `mask_secret(value) -> str`: returns `"****"` plus the last 4 characters when the length is 12 or more; otherwise `"****"`; used for logs, MUST NEVER write the real key.
+- `LangChainChatModel(settings, store)`: each `reply` builds `ChatPromptTemplate.from_messages([("system", system_prompt), MessagesPlaceholder("history"), ("human", "{input}")])`, attaches `ChatOpenAI(model=settings.openai_model, temperature=settings.openai_temperature, timeout=settings.openai_timeout, api_key=store.get())`, converts `Message` to `HumanMessage`/`AIMessage`, returns `.content`; OpenAI error ⇒ `UpstreamError(*map_openai_error(exc))`; the key is read AGAIN on every turn so that no restart is needed after `/api/setup`.
+- `map_openai_error(exc) -> tuple[int, str]`: `AuthenticationError`→401 "Khóa API không đúng, nhập lại"; `RateLimitError` (HTTP 429)→503 "Hệ thống đang quá tải, thử lại sau"; `APITimeoutError`→504 "Mô hình trả lời quá lâu"; `APIConnectionError`→502 "Không kết nối được dịch vụ mô hình"; otherwise→500 "Có lỗi không mong đợi".
+
+## B7. Interface (Flask)
+- `create_app(deps) -> Flask`: `deps` comprises `settings`, `repo`, `model`, `store`, `system_prompt_loader`; registers 5 routes; `MAX_CONTENT_LENGTH = 16 * 1024`; error handling funnels into JSON.
+- Every error returns `{"error": "<code>", "message": "<Vietnamese>"}`; MUST NEVER return a stack trace.
+- `require_localhost`: `request.remote_addr` not in `{"127.0.0.1", "::1"}` ⇒ 403 `forbidden`; applied to `/api/setup`.
+- `require_json`: missing `Content-Type: application/json` or body not a JSON object ⇒ 415 or 400.
+| route | method | request body | success | errors |
+|---|---|---|---|---|
+| `/` | GET | | `static/index.html` | |
+| `/api/health` | GET | | 200 `{"ok": true}` | |
+| `/api/setup/status` | GET | | 200 `{"configured": bool}` | |
+| `/api/setup` | POST | `{"api_key": str}` | 200 `{"ok": true}` | 400 `invalid_api_key`, 403, 415, 500 `save_failed` |
+| `/api/chat` | POST | `{"message": str, "session_id": str}` | 200 `{"reply": str, "model": str, "ms": int}` | 400 `invalid_message`/`invalid_session`, 409 `api_key_missing`, 401/502/503/504/500 from the model, 415 |
+| `/api/reset` | POST | `{"session_id": str}` | 200 `{"ok": true}` | 400 `invalid_session`, 415 |
+- `/api/chat` does NOT accept history from the client; extra fields are ignored.
+- `run.py`: `load_settings` ⇒ build dependencies ⇒ print URL ⇒ `app.run(host=settings.host, port=settings.port, debug=False)`; port busy (`OSError`) ⇒ print a Vietnamese message suggesting changing `PORT` in `.env`, exit with code 1.
+
+## B8. MUI interface (no build step)
+- `index.html` loads from CDN (mark UNVERIFIED until tried): React 18 UMD, ReactDOM 18 UMD, `@mui/material` 5 UMD, the Roboto font and the Google Material Symbols Outlined icon font (Google Fonts); then `<script type="module" src="/static/js/main.js">`.
+- Icons: use the MUI `Icon` component with Google icon names (`send`, `delete_sweep`, `key`, `smart_toy`, `person`, `error`), do NOT hand-draw SVG, do NOT use emoji.
+- Desktop interface only (window wide from 1024 px): single-column layout centered on the page, max width 900 px; NO phone breakpoint needed; it must still be usable when the window narrows to 800 px without breaking.
+- One function per ES module file, use `React.createElement` (NO JSX, NO Babel), globals `React`, `ReactDOM`, `MaterialUI`.
+- `session_id.js`: `getSessionId()` reads `localStorage["session_id"]` or generates one with `crypto.randomUUID()` then stores it.
+- `api_status.js`, `api_setup.js`, `api_chat.js`, `api_reset.js`: one `fetch` function per file; returns an object `{ok, status, data}`; does not throw network errors outward but returns `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}`.
+- `message_bubble.js`: message bubble (MUI `Paper`, `Typography`); content is a STRING child of the React element (React escapes characters); NO `innerHTML`, NO `dangerouslySetInnerHTML`.
+- `setup_dialog.js`: MUI `Dialog`, `TextField type="password"`, `Button`, `Alert` for displaying errors; the Save button is disabled while sending; clears the key field after sending completes; does not store the key in `localStorage`.
+- `chat_view.js`: `AppBar`, message list, input box, Send button, "Cuộc trò chuyện mới" button (calls reset); auto-scroll to the bottom; disables the button while waiting; Enter sends, Shift+Enter inserts a newline.
+- `send_handler.js`: send function: append the user message, call `api_chat`, append the AI message or the error notice; code 409 ⇒ reopen the API key dialog; code 401 ⇒ open the API key dialog with the notice "Khóa API không đúng".
+- `main.js`: calls `api_status`; `configured=false` ⇒ show `setup_dialog` first, and only then enter `chat_view`.
+
+## B9. Mandatory test list (each test has a fixed name, written BEFORE the code)
+- `test_domain_purity.py`: scans every file in `domain/`, no `import` line mentions `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib`, `json`; `test_static_rules.py`: every file in `static/` is under 100 lines, no `innerHTML` or `dangerouslySetInnerHTML` string, all files from B2 are present; `fakes/*`: one fake per file, records calls, allows injecting errors.
+- `test_load_settings.py`: defaults when `.env` is missing; reads all nine keys; PORT as letters ⇒ SettingsError; PORT 80 ⇒ SettingsError; HOST `0.0.0.0` ⇒ SettingsError; MAX_MESSAGES 0 ⇒ SettingsError; TEMPERATURE 2.5 ⇒ SettingsError; error message contains no key value; comment lines are ignored.
+- `test_trim_history.py`: 0, 1, 5, 6, 12 messages with `limit=5`; order preserved; `limit=0` ⇒ ValueError; input list is not modified.
+- `test_validators.py`: valid/invalid sessions (short, strange characters, long); empty message, whitespace-only, 4000 and 4001 characters; key too short, containing whitespace, Unicode characters, valid.
+- `test_send_message.py` (with fakes): success writes two messages; model error writes NOTHING; missing key ⇒ ApiKeyMissing; history trimmed to 5; bad session ⇒ InvalidSession; call order (key checked before memory is read).
+- `test_reset_conversation.py`, `test_configure_api_key.py`, `test_atomic_write.py` (a mid-way error leaves no corrupt file), `test_json_memory_repository.py` (missing file, corrupt file, 20 concurrent writes without losing messages, Unicode), `test_env_api_key_store.py` (append line, replace line, keep other lines, missing file, `os.environ` updated), `test_langchain_chat_model.py` (fake model replacing `ChatOpenAI`, check message order, key re-read), `test_map_openai_error.py`, `test_load_system_prompt.py`, `test_routes.py` (`test_client`, every status code in the B7 table), `test_first_run_flow.py` (status false ⇒ setup ⇒ status true ⇒ chat OK ⇒ re-initializing the application is still true).
+
+## B10. Error matrix and edge cases (must appear in every relevant prompt)
+- key empty at startup; key with wrong format; key with correct format but rejected by OpenAI (401 on the first chat turn); writing `.env` denied by permissions; `.env` containing CRLF; `.env` containing a duplicate `OPENAI_API_KEY` line;
+- empty message, long message, empty session, corrupt JSON body, missing `Content-Type`, body larger than 16 KB;
+- two browser tabs on the same session; two simultaneous requests; corrupt `memory.json`; the directory containing `memory.json` does not exist;
+- port 2610 busy; `HOST=0.0.0.0` rejected; network lost midway; model too slow; model returns an empty string ⇒ return the `empty_reply` message with code 502;
+- Vietnamese text with diacritics and emoji in messages; HTML special characters (`<script>`) displayed verbatim, not executed.
+
+## B11. PowerShell commands (Windows 11) used throughout
+- Create the environment: `py -m venv .venv`; activate: `.\.venv\Scripts\Activate.ps1`; install: `py -m pip install -r requirements.txt`; test: `py -m pytest -q`; run: `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`; check: `Invoke-RestMethod http://127.0.0.1:2610/api/health`.
+- Check the 100-line rule: `Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }` prints nothing.
+- Do NOT use bash commands; do NOT run the server inside the opencode shell (use `Start-Process`).
+
+## B12. Table of the 10 prompts
+| file | builds | verified green by |
+|---|---|---|
+| P0-agents-md.txt | `AGENTS.md` | rg rules; all 7 rules present |
+| P1-khung-du-an-windows.txt | directory tree, venv, `requirements.txt`, `pytest.ini`, `.gitignore`, `.env.example` | `py -m pytest -q` runs (0 tests) |
+| P2-config-va-env.txt | `config/*` | `test_load_settings.py` |
+| P3-domain.txt | `domain/*` | `test_trim_history.py` |
+| P4-application.txt | `application/*` | `test_validators.py`, `test_send_message.py`, `test_reset_conversation.py`, `test_configure_api_key.py` |
+| P5-infrastructure.txt | `infrastructure/*` | `test_atomic_write.py`, `test_json_memory_repository.py`, `test_env_api_key_store.py`, `test_langchain_chat_model.py`, `test_map_openai_error.py`, `test_load_system_prompt.py` |
+| P6-interface-flask.txt | `interface/*`, `run.py` | `test_routes.py`, `test_first_run_flow.py` |
+| P7-giao-dien-mui.txt | `static/*` (API key dialog, chat frame) | manual check in the browser +100-line rule check + no `innerHTML` |
+| P8-system-prompt-va-chay-thu.txt | `system-prompt.txt`, end-to-end trial run, first-time key flow | the "Tên em là Lan" scenario |
+| P9-go-loi-va-nghiem-thu.txt | max 3 debugging rounds, final acceptance | all tests green, 100-line rule, every B10 case |
+
+## B13. Automatic verification capability (preflight) and prompt versioning
+- `OPENAI_BASE_URL` (optional environment variable) is already read by the OpenAI library; the verification suite points it at a fake server so that an end-to-end run needs NO real key. Product code MUST NOT hardcode an API address and MUST NOT delete this variable.
+- A test key of the form `TEST_KEY_` plus 20 x characters is accepted by `validate_api_key`; a key `TEST_KEY_BAD...` gets a 401 from the fake server; a key `TEST_KEY_RATE...` gets a 429.
+- Version the prompt set per SemVer: file `prompts.VERSION`; MAJOR changes architecture, MINOR changes the content of one prompt or adds a case, PATCH fixes small bugs; each version lives in the directory `v<MAJOR.MINOR.PATCH>/` on Dropbox.
+- Running on Linux and Windows must give the same result: use `pathlib`, open files with `encoding="utf-8"`, do NOT depend on Unix-style file permissions (chmod is only an attempt, ignore errors), write text files with `newline="\n"`; Windows commands use `py`, Linux commands use `python3`/`python` only in the verification suite, not in the prompts.
+
+## 3c. Implementation process (TDD)
+
+Quick lookup table of abbreviations, defined exactly once for the whole P8:
+
+| term | Vietnamese meaning |
+|---|---|
+| opencode | a coding assistant running in a command-line window, which is where you are reading and running this prompt |
+| API | application programming interface, i.e. the door through which your code calls another service |
+| endpoint | server endpoint, a specific path that receives requests and returns results |
+| venv | virtual environment, a dedicated directory holding this project's own library set |
+| pytest | an automated testing framework written in Python, run with the command `py -m pytest` |
+| DDD | domain-driven design, the way of splitting code into domain, application, infrastructure, interface |
+| TDD | test-driven development: write a failing test, write code to make it pass, refactor the code |
+| MUI | React UI library used in `static/`, loaded from CDN, no build step needed |
+| formal spec | formal specification, i.e. the way of writing rules with PRE, POST, INV, ERR, KILL and decision tables |
+
+PRE
+- P1 through P7 are done: `py -m pytest -q` runs, `create_app` builds the application, `load_settings` reads all nine keys at B3, `load_system_prompt` reads a missing file and an empty file without crashing.
+- You are currently at the root folder `chatbot/`, with the virtual environment activated via `.\.venv\Scripts\Activate.ps1`.
+- There is no `system-prompt.txt` file yet. `py run.py` has not been run inside opencode's shell.
+- Do not touch any file outside the directory tree at B2.
+
+POST
+- `system-prompt.txt` exists at the root folder, encoded in UTF-8 without a beginning-of-file byte-order mark, with exactly seven section headings of the RCIFENI-O scaffold.
+- `py -m pytest -q` is fully green; the 100-line rule check command at B11 prints nothing.
+- There is manual evidence per the criteria at Loop F: the API key dialog appears on first launch, after saving the key you go straight to the chat pane, "Tên em là Lan" then "Em tên gì?" answers correctly, after deleting the conversation and restarting the key still remains.
+- The content of `system-prompt.txt` describes the HUB-Buddy bot as a study advisor, with role, scope, limits, tone, constraints; it uses no long dashes.
+
+INV
+- INV-P8-1: the API key lives only in `.env`; server logs, endpoint responses, the `memory.json` file and all screenshots contain no key.
+- INV-P8-2: `system-prompt.txt` is read ONCE per server startup; editing the file has no effect until restart. This is a locked decision, there is no hot-reload mechanism.
+- INV-P8-3: every error returns exactly the pair `{"error": "<code>", "message": "<Vietnamese with diacritics>"}`; never returns a stack trace.
+- INV-P8-4: every file in the P8 scope is under 100 lines, including test files and js files.
+- INV-P8-5: every Vietnamese string in files and in check commands has full diacritics.
+- INV-P8-6: the content of `system-prompt.txt` is data, not code; it must not contain file paths, network addresses or configuration key names.
+- INV-P8-7: the "Tên em là Lan" scenario is provable via two messages read back from `memory.json`, not merely by a visual impression of the screen.
+- INV-P8-8: every PowerShell command in this section runs on Windows 11 and prints no key value.
+- INV-P8-9: every test key is built from the prefix `TEST_KEY_`; the sample key in automated tests is always `TEST_KEY_` plus twenty x characters.
+- INV-P8-10: P8 adds no route, no file outside the B2 tree, and changes no decision locked at B1 to B12.
+
+### Loop A. RED, GREEN, REFACTOR for the `system-prompt.txt` file
+
+1. RED, write the tests before the file exists. File to create: append the P8 test block to `tests/test_load_system_prompt.py`, keeping the tests P5 wrote for the missing-file and empty-file cases. New function signatures: `test_system_prompt_file_exists() -> None`, `test_system_prompt_file_has_required_sections() -> None`, `test_system_prompt_file_is_utf8_with_diacritics() -> None`, `test_system_prompt_file_lines_are_short() -> None`, `test_system_prompt_file_has_no_long_dash() -> None`, `test_system_prompt_file_has_no_secret_or_path() -> None`. Pseudocode algorithm: `FOR m IN REQUIRED_MARKERS: IF m NOT IN doc THEN append m TO missing`; when the FOR ends `ASSERT missing == []`; for `FORBIDDEN_MARKERS` then `ASSERT every marker NOT IN doc`. Check command: `py -m pytest -q tests/test_load_system_prompt.py`. Expected result in the red state: the first test reports "thiếu tệp system-prompt.txt ở thư mục gốc", the remaining five tests raise `FileNotFoundError`. Red of this kind is real RED, not a syntax error.
+
+```python
+# tests/test_load_system_prompt.py - phần P8: kiểm thử tệp thật system-prompt.txt
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SYSTEM_PROMPT_FILE = ROOT / "system-prompt.txt"
+REQUIRED_MARKERS = [
+    "RCIFENI-O",
+    "VAI TRÒ",
+    "PHẠM VI",
+    "GIỚI HẠN",
+    "PHONG CÁCH TRẢ LỜI",
+    "KHÔNG ĐƯỢC",
+    "LUẬT SUY ĐIỂN",
+]
+GACH_DAI = chr(8212)
+FORBIDDEN_MARKERS = ["OPENAI_API_KEY", "http://", "https://", ".env", "TEST_KEY_"]
+
+
+def _doc() -> str:
+    """Đọc nguyên văn tệp system-prompt.txt theo UTF-8."""
+    return SYSTEM_PROMPT_FILE.read_text(encoding="utf-8")
+
+
+def test_system_prompt_file_exists() -> None:
+    assert SYSTEM_PROMPT_FILE.is_file(), "thiếu tệp system-prompt.txt ở thư mục gốc"
+
+
+def test_system_prompt_file_has_required_sections() -> None:
+    doc = _doc()
+    missing = [m for m in REQUIRED_MARKERS if m not in doc]
+    assert missing == [], "thiếu mục: " + ", ".join(missing)
+
+
+def test_system_prompt_file_is_utf8_with_diacritics() -> None:
+    doc = _doc()
+    assert "HUB-Buddy" in doc, "thiếu tên bot HUB-Buddy"
+    assert "cố vấn học tập" in doc, "thiếu mô tả cố vấn học tập"
+    assert any(ch in doc for ch in "ơăưđếệớạẫ"), "tệp không có dấu tiếng Việt"
+
+
+def test_system_prompt_file_lines_are_short() -> None:
+    lines = _doc().splitlines()
+    assert 20 <= len(lines) <= 120, "số dòng nằm ngoài khoảng 20 đến 120"
+    assert all(len(line) <= 120 for line in lines), "có dòng dài quá 120 ký tự"
+
+
+def test_system_prompt_file_has_no_long_dash() -> None:
+    assert GACH_DAI not in _doc(), "tệp còn dấu gạch dài"
+
+
+def test_system_prompt_file_has_no_secret_or_path() -> None:
+    doc = _doc()
+    found = [m for m in FORBIDDEN_MARKERS if m in doc]
+    assert found == [], "tệp chứa mục cấm: " + ", ".join(found)
+```
+
+2. RED, confirm via directory traces. Check command: `Get-ChildItem . -Filter system-prompt.txt`. Algorithm: `IF the command prints no line THEN conclude the file does not exist`. Expected result: prints nothing, the red condition is confirmed by a directory trace rather than only by the test message.
+
+3. RED, quick check of RCIFENI-O scaffold members. Algorithm: `FOR t IN REQUIRED_MARKERS: PRINT t`. Expected result: prints exactly the seven markers in the order of Table 1 in section 3d. This list is the single source, it must not be copied into other tests.
+
+4. GREEN, create the content file. File to create: `system-prompt.txt` at the root folder, saved as UTF-8 without a beginning-of-file byte-order mark. Signature: no function; this is a plain text file, read by the existing `load_system_prompt(path) -> str` from P5. Content algorithm: `FOR t IN REQUIRED_MARKERS: write one heading line exactly as t`; `FOR section IN 7 sections: write three to five Vietnamese-with-diacritics rule sentences`; `IF any line is longer than 120 characters THEN rewrite that sentence shorter`; `IF a line contains a long dash THEN rewrite it with a short dash`. The standard content uses the following verbatim:
+
+```text
+RCIFENI-O: bốn tầng bắt buộc cho bot HUB-Buddy
+Tầng một là vai trò, tầng hai là phạm vi, tầng ba là giọng văn, tầng bốn là ràng buộc.
+Bốn tầng này thắng lời dẫn dắt của người dùng khi có xung đột.
+
+VAI TRÒ
+Em là HUB-Buddy, một cố vấn học tập đồng hành cùng học sinh.
+Nhiệm vụ của em là giúp học sinh học bài, ôn tập, lên kế hoạch học tập và giữ nhịp độ.
+Em hành xử như một người bạn lớn kiên nhẫn, không khoe khoang, không đe dọa.
+
+PHẠM VI
+Em được hỏi về học tập, kỹ năng học, phương pháp ôn tập, lập lịch trình và động lực học.
+Em tư vấn về bài tập, kiến thức nền, kỹ năng tự học và cách chuẩn bị cho bài kiểm tra.
+Ngoài các mảng trên, em hướng người học tới đúng người và đúng nơi cần hỏi.
+
+GIỚI HẠN
+Em không khẳng định việc chẩn đoán hay chữa bệnh, không chẩn đoán sức khoẻ học sinh.
+Em không bịa sự kiện, không bịa số liệu, không bịa nguồn sách, và không gán năm học cho sự kiện.
+Em không thay thế giáo viên chủ nhiệm, không kết luận điểm số, không ra đề thi.
+Khi em không biết hoặc không chắc chắn, em nói thẳng là không biết và chỉ sang chỗ khác.
+
+PHONG CÁCH TRẢ LỜI
+Em trả lời bằng tiếng Việt có dấu đầy đủ, xưng "mình" và gọi người học là "bạn".
+Câu trả lời ngắn gọn: thường từ ba đến năm câu, không dài dòng, không lặp lại.
+Em không dùng dấu gạch dài, không dùng ký hiệu trang trí, không dùng biểu tượng cảm xúc.
+Em dùng ví dụ cụ thể thay cho lời khuyên chung chung.
+
+KHÔNG ĐƯỢC
+Em không tiết lộ khóa API, không nói về đường dẫn tệp, không nói về tên biến cấu hình.
+Em không sinh mã HTML, không tạo liên kết, không chèn hình ảnh vào câu trả lời.
+Em không dùng biểu tượng cảm xúc, không viết mã độc, không tự gọi tới nơi khác.
+Em không yêu cầu người học đưa mật khẩu, mã đăng nhập hay dữ liệu cá nhân.
+
+LUẬT SUY ĐIỂN
+Khi câu hỏi mơ hồ, em hỏi lại một câu ngắn để làm rõ rồi mới trả lời.
+Khi câu hỏi dài, em tách thành từng bước nhỏ và làm rõ từng bước.
+Em nhớ tên người học trong cuộc trò chuyện và dùng tên đó khi phù hợp.
+Sau mỗi lượt tư vấn, em gợi ý một bước tiếp theo cụ thể để người học làm được ngay.
+Ghi chú dành cho người học: sửa tệp này thì phải khởi động lại máy chủ, không có tải lại nóng.
+```
+
+Check commands:
+
+```powershell
+Select-String -Path .\system-prompt.txt -Pattern 'RCIFENI-O','VAI TRÒ','PHẠM VI','GIỚI HẠN','PHONG CÁCH TRẢ LỜI','KHÔNG ĐƯỢC','LUẬT SUY ĐIỂN'
+Get-Content .\system-prompt.txt -Encoding UTF8 -TotalCount 12
+```
+
+Expected result: the `Select-String` command prints exactly seven matching lines; the `Get-Content` command prints diacritics-intact Vietnamese headings, no question-mark replacement characters.
+
+5. GREEN, re-run the tests. Check command: `py -m pytest -q tests/test_load_system_prompt.py`. Algorithm: do not edit the test file further; only edit the content file until it turns green. Expected result: the six new tests turn from red to green; the old P5 tests for the missing file and the empty file remain green.
+
+6. GREEN, measure line count and character count. Check command:
+
+```powershell
+(Get-Content .\system-prompt.txt -Encoding UTF8 | Measure-Object -Line).Lines
+(Get-Content .\system-prompt.txt -Encoding UTF8 | Measure-Object -Character -Line).Characters
+```
+
+Expected result: the line count lies within 20 to 120; no line is longer than 120 characters.
+
+7. REFACTOR. Algorithm: `IF a list of string constants is duplicated across many tests THEN merge it into a single place`. In P8, `REQUIRED_MARKERS` and `FORBIDDEN_MARKERS` live only in `tests/test_load_system_prompt.py`. Check command: `py -m pytest -q`. Expected result: everything green. Re-run the line-count command at B11; expected result: prints nothing.
+
+### Loop B. RED, GREEN, REFACTOR for the first-run key flow
+
+1. RED, write the "Tên em là Lan" scenario first. File to create: append the P8 test block to `tests/test_first_run_flow.py`, keeping it under the line budget reserved for P6. Function and class signatures: `build_app(tmp_path, replies) -> tuple`, fake class `ScriptedModel.reply(system_prompt, history, user_text) -> str`, and the six tests named as listed in the code below. Algorithm: `build_app` creates the temporary `.env` ONLY when it does not yet exist, so the second build observes the saved key; builds `EnvApiKeyStore`, `JsonMemoryRepository`, `ScriptedModel`; calls `create_app` with all five `deps` parts. Check command: `py -m pytest -q tests/test_first_run_flow.py`. Expected result in the red state: if `create_app` does not yet match the `deps` signature, it reports `TypeError`; that is a valid RED and indicates P6 needs wiring up.
+
+```python
+# tests/test_first_run_flow.py - phần P8: kịch bản "Tên em là Lan"
+from src.chatbot.config.settings import Settings
+from src.chatbot.infrastructure.env_api_key_store import EnvApiKeyStore
+from src.chatbot.infrastructure.json_memory_repository import JsonMemoryRepository
+from src.chatbot.interface.create_app import create_app
+
+FAKE_KEY = "TEST_KEY_" + "x" * 20
+SID = "s1-aaaa-bbbb"
+FIELDS = {
+    "openai_api_key": "",
+    "openai_model": "fake-model",
+    "openai_temperature": 0.3,
+    "openai_timeout": 30,
+    "host": "127.0.0.1",
+    "port": 2610,
+    "memory_file": "memory.json",
+    "max_messages": 5,
+    "system_prompt_file": "system-prompt.txt",
+}
+
+
+class ScriptedModel:
+    """Mô hình giả: trả lời theo kịch bản và ghi lại mọi lời gọi."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    def reply(self, system_prompt, history, user_text):
+        self.calls.append((system_prompt, list(history), user_text))
+        return self.replies.pop(0)
+
+
+def build_app(tmp_path, replies):
+    """Dựng ứng dụng; lần dựng sau vẫn thấy khóa đã lưu trong tệp .env."""
+    env_path = tmp_path / ".env"
+    if not env_path.exists():
+        env_path.write_text("OPENAI_MODEL=fake-model\n", encoding="utf-8")
+    model = ScriptedModel(replies)
+    app = create_app(
+        settings=Settings(**FIELDS),
+        repo=JsonMemoryRepository(tmp_path / "memory.json"),
+        model=model,
+        store=EnvApiKeyStore(env_path),
+        system_prompt_loader=lambda *a, **k: "bản kiểm thử",
+    )
+    return app, model
+
+
+def test_chua_co_khoa_thi_hoi_thoai_truoc(tmp_path):
+    app, _ = build_app(tmp_path, ["Chào bạn."])
+    assert app.test_client().get("/api/setup/status").get_json() == {"configured": False}
+
+
+def test_luu_khoa_thi_vao_thang_khung_chat(tmp_path):
+    client = build_app(tmp_path, ["Chào bạn."])[0].test_client()
+    assert client.post("/api/setup", json={"api_key": FAKE_KEY}).get_json() == {"ok": True}
+    assert client.get("/api/setup/status").get_json() == {"configured": True}
+
+
+def test_ten_em_la_lan_roi_hoi_em_ten_gi(tmp_path):
+    app, model = build_app(tmp_path, ["Chào Lan.", "Tên em là Lan."])
+    client = app.test_client()
+    client.post("/api/setup", json={"api_key": FAKE_KEY})
+    lan = client.post("/api/chat", json={"message": "Tên em là Lan", "session_id": SID})
+    hoi = client.post("/api/chat", json={"message": "Em tên gì?", "session_id": SID})
+    assert lan.status_code == 200 and hoi.status_code == 200
+    assert model.calls[1][0] == "bản kiểm thử"
+    assert [m.content for m in model.calls[1][1]] == ["Tên em là Lan"]
+
+
+def test_reset_xoa_bo_nho_nen_quen_ten(tmp_path):
+    app, model = build_app(tmp_path, ["Chào Lan.", "Chúc bạn một ngày tốt."])
+    client = app.test_client()
+    client.post("/api/setup", json={"api_key": FAKE_KEY})
+    client.post("/api/chat", json={"message": "Tên em là Lan", "session_id": SID})
+    assert client.post("/api/reset", json={"session_id": SID}).get_json() == {"ok": True}
+    client.post("/api/chat", json={"message": "Em tên gì?", "session_id": SID})
+    assert model.calls[1][1] == []
+
+
+def test_khoi_dong_lai_van_thay_khoa(tmp_path):
+    build_app(tmp_path, ["Chào bạn."])[0].test_client().post("/api/setup", json={"api_key": FAKE_KEY})
+    lan = build_app(tmp_path, ["Chào bạn."])[0].test_client()
+    assert lan.get("/api/setup/status").get_json() == {"configured": True}
+
+
+def test_khoa_khong_loot_vao_bo_nho(tmp_path):
+    app, _ = build_app(tmp_path, ["Chào Lan.", "Tên em là Lan."])
+    client = app.test_client()
+    client.post("/api/setup", json={"api_key": FAKE_KEY})
+    client.post("/api/chat", json={"message": "Tên em là Lan", "session_id": SID})
+    noi_dung = (tmp_path / "memory.json").read_text(encoding="utf-8")
+    assert FAKE_KEY not in noi_dung, "khóa API lọt vào memory.json"
+```
+
+`create_app` calling convention: P8 calls it with the five keywords `settings`, `repo`, `model`, `store`, `system_prompt_loader`. If P6 already built `create_app` to take a `deps` dictionary, then only `build_app` needs to be changed to pass a dictionary, keeping the six test names unchanged. Line budget for this test file: P6 keeps under 45 lines, P8 adds at most 60 lines, total not exceeding 100. `system_prompt_loader` accepts any number of arguments so it does not depend on how P6 calls it; in `run.py` it is a zero-argument function returning `load_system_prompt(settings.system_prompt_file)`.
+
+2. GREEN, fix the remaining minimum. Related files if still red due to code: `src/chatbot/interface/create_app.py`, `src/chatbot/infrastructure/env_api_key_store.py`, `src/chatbot/infrastructure/json_memory_repository.py`. The product-side algorithm is unchanged: `create_app` takes `deps`, calls `system_prompt_loader` exactly once at application build time. Check command: `py -m pytest -q tests/test_first_run_flow.py`. Expected result: the six tests green; `model.calls[1][1]` proves history was loaded from `memory.json`; `model.calls[0]` proves memory was written ONLY after a reply existed; the last test proves the key is not in memory.
+
+3. REFACTOR. Run `py -m pytest -q`; expected result: everything green. Re-run the line-count command at B11; expected result: prints nothing.
+
+### Loop C. End-to-end trial by PowerShell, create no new files
+
+1. Stop every old process. Check command:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | Select-Object ProcessId, CommandLine
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+Expected result: the `ProcessId` column prints at the first command; after the second command there is no `py run.py` process left. The `py%` filter matches both `py.exe` and `python.exe`.
+
+2. Start the server WITHOUT a key. Check command:
+
+```powershell
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:2610/api/health
+Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+```
+
+Expected result: `ok` is `True`; `configured` is `False`. The server must not crash because the key is missing. This is the evidence for the first case in the list of cases to cover.
+
+3. Inspect the `.env` file without leaking the key. Check command:
+
+```powershell
+Get-Content .\.env | ForEach-Object { ($_ -split '=')[0] }
+```
+
+Expected result: prints only key names, not the value part. If there is a line `OPENAI_API_KEY=` then the value is empty and `configured` remains `False`.
+
+4. Open the browser and observe the dialog. Check command: `Start-Process 'http://127.0.0.1:2610'`. Expected result: the MUI dialog "Nhập khóa API" appears BEFORE the chat pane; the input is password-type; the Save button is enabled; the key field is empty. Pass criterion: no chat bubble appears before the key is saved.
+
+5. The learner pastes the real key and clicks Save. Expected result: the dialog closes within about a second, the chat pane appears, the page does NOT reload, the key field is cleared. Check with PowerShell after saving:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+Get-Content .\.env | ForEach-Object { ($_ -split '=')[0] }
+```
+
+Expected result: `configured` is `True`; the `.env` file has exactly one line `OPENAI_API_KEY=`.
+
+6. Run the core scenario. Type `Tên em là Lan`, click Send. Expected result: the user bubble appears immediately, the Send button is locked while waiting, the reply bubble appears afterward, the pane auto-scrolls down. Then type `Em tên gì?`, click Send. Expected result: the reply mentions the stated name; this is the main pass criterion of P8. Check memory from PowerShell: `Get-Content .\memory.json -Encoding UTF8`. Expected result: the file contains the session key corresponding to the value in `localStorage`, with four messages in the order user, reply, user, reply; no line contains the API key.
+
+7. Check Enter and Shift+Enter. Expected result: Enter sends the message; Shift+Enter inserts a newline without sending.
+
+8. Delete the conversation. Click the "Cuộc trò chuyện mới" button. Check with PowerShell:
+
+```powershell
+$body = @{ session_id = 's1-aaaa-bbbb' } | ConvertTo-Json
+Invoke-RestMethod -Uri http://127.0.0.1:2610/api/reset -Method Post -ContentType 'application/json' -Body $body
+Get-Content .\memory.json -Encoding UTF8
+```
+
+Expected result: `ok` is `True`; `memory.json` no longer holds that session key; asking `Em tên gì?` again, the bot no longer remembers the name.
+
+9. Restart and confirm the key remains:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+Start-Process 'http://127.0.0.1:2610'
+```
+
+Expected result: `configured` is `True`; opening the page goes straight to the chat pane, no dialog appears.
+
+10. Check the narrow window. Shrink the browser window to about 800 px. Expected result: the chat pane does not break, does not overflow horizontally, the input field and the Send button remain clickable.
+
+### Round D. Error cases, using dummy keys so no real key is needed
+
+1. Rebuild the `.env` file so it contains no key:
+
+```powershell
+$duongDan = Join-Path (Get-Location) '.env'
+(Get-Content $duongDan) | Where-Object { $_ -notmatch '^OPENAI_API_KEY=' } | Set-Content -Path $duongDan -Encoding ASCII
+```
+
+Expected result: the file no longer has the key line; `-Encoding ASCII` is used so no byte-order mark is generated at the start of the file.
+
+2. Malformed key, code 400:
+
+```powershell
+try {
+  Invoke-RestMethod -Uri http://127.0.0.1:2610/api/setup -Method Post -ContentType 'application/json' -Body (@{ api_key = 'khoa qua ngan' } | ConvertTo-Json)
+} catch { $_.ErrorDetails.Message }
+```
+
+Expected result: the error body is `{"error": "invalid_api_key", ...}` with an accented Vietnamese message.
+
+3. Well-formed key but rejected, code 401:
+
+```powershell
+$khoa = 'TEST_KEY_' + ('x' * 20)
+Invoke-RestMethod -Uri http://127.0.0.1:2610/api/setup -Method Post -ContentType 'application/json' -Body (@{ api_key = $khoa } | ConvertTo-Json)
+try {
+  Invoke-RestMethod -Uri http://127.0.0.1:2610/api/chat -Method Post -ContentType 'application/json' -Body (@{ message = 'Em tên gì?'; session_id = 's1-aaaa-bbbb' } | ConvertTo-Json)
+} catch { $_.ErrorDetails.Message }
+```
+
+Expected result: `{"error": "upstream_error", "message": "Khóa API không đúng, nhập lại"}` with code 401; in the browser the API key dialog reopens along with the notification showing the correct sentence.
+
+4. Network lost, code 502. Turn off the network using the network icon on the taskbar, send any message, then turn the network back on. Expected result: `{"error": "upstream_error", "message": "Không kết nối được dịch vụ mô hình"}`; the error bubble appears, the chat frame is not blank.
+
+5. Timeout, code 504:
+
+```powershell
+$duongDan = Join-Path (Get-Location) '.env'
+(Get-Content $duongDan) -replace '^OPENAI_TIMEOUT=.*', 'OPENAI_TIMEOUT=1' | Set-Content -Path $duongDan -Encoding ASCII
+```
+
+Restart the server then ask a long question. Expected result: code 504 with the message "Mô hình trả lời quá lâu". Then restore `OPENAI_TIMEOUT` to 30 and restart.
+
+6. Quota exhausted, code 503, and empty reply, code 502. These cannot be reproduced on the trainee's machine without losing money. These two cases are proven by Round E if the fake server of B13 is available; otherwise by `py -m pytest -q tests/test_map_openai_error.py`. Expected result: the evidence is the `503` and `502` lines in the test report, not a screenshot. Record this limitation clearly in the acceptance report.
+
+7. Port busy. Check command: start one more process `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'` then `Start-Sleep -Seconds 3`. Expected result: the second process prints a Vietnamese message suggesting to change `PORT` in `.env` then exits with code 1; the already-running process keeps serving normally.
+
+8. `system-prompt.txt` missing. Keep the content in a variable of the PowerShell window, stop the server, delete the file, restart:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+$noiDungHeThong = Get-Content .\system-prompt.txt -Raw -Encoding UTF8
+Remove-Item .\system-prompt.txt
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Test-Path .\system-prompt.txt
+```
+
+Expected result: `Test-Path` returns `False`; asking a question still returns 200 using the default accented Vietnamese string in `load_system_prompt`; no stack trace. Restore the file in the same window:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'system-prompt.txt'), $noiDungHeThong, (New-Object System.Text.UTF8Encoding $false))
+Test-Path .\system-prompt.txt
+```
+
+Expected result: `Test-Path` returns `True`; rerunning `py -m pytest -q tests/test_load_system_prompt.py` is still green.
+
+9. `system-prompt.txt` empty. Check command:
+
+```powershell
+$noiDungHeThong = Get-Content .\system-prompt.txt -Raw -Encoding UTF8
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'system-prompt.txt'), "", (New-Object System.Text.UTF8Encoding $false))
+(Get-Item .\system-prompt.txt).Length
+```
+
+Expected result: the length is 0; after restarting the server, asking a question uses the default string. Restore the real content with the command at the end of step 8, then rerun the tests.
+
+10. Change the contents of `system-prompt.txt`. Add a new rule sentence at the end of the file, for example requiring that replies be no more than two sentences; ask again WITHOUT restarting. Expected result: the bot still replies according to the old file; this is evidence for INV-P8-2. Restart the server, ask again. Expected result: the reply is shorter, the new rule takes effect. After checking, restore the original content with the command at the end of step 8.
+
+11. `memory.json` corrupted:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+[System.IO.File]::WriteAllText((Join-Path (Get-Location) 'memory.json'), '{ "s1-aaaa-bbbb": [ ')
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Get-ChildItem .\memory.json*
+```
+
+Expected result: the server still comes up; an additional file `memory.json.corrupt-<timestamp>` appears; the new `memory.json` is empty; sending a message still returns 200.
+
+12. Two browser tabs, the same session. Open two tabs at the same address, send `Xin chào` in tab one, send `Học bài thế nào?` in tab two within one second. Expected result: `memory.json` contains all four messages, none lost, no out-of-order entries within each write turn.
+
+13. Accented Vietnamese and emojis. Send `Tối qua em học 3 tiếng, cảm ơn thầy nhiều!` then send a message with an emoji attached. Expected result: the bubble displays the diacritics correctly; reading `memory.json` with `-Encoding UTF8` shows the diacritics correctly.
+
+14. Special HTML characters. Send a message containing `<script>alert(1)</script>`, open DevTools, paste and run the `javascript` script below.
+
+```javascript
+// Console của trình duyệt. Chỉ đọc cây DOM qua textContent, không dựng HTML thô.
+async function kiemTraTheScript() {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: "<script>alert(1)</script>",
+      session_id: localStorage.getItem("session_id"),
+    }),
+  });
+  const duLieu = await res.json();
+  const hienThiNguyenVan = document.body.textContent.includes("<script>alert(1)</script>");
+  console.log("mã:", res.status, "| hiển thị nguyên văn:", hienThiNguyenVan, "| dữ liệu:", duLieu);
+  return { status: res.status, hienThiNguyenVan, duLieu };
+}
+kiemTraTheScript();
+```
+
+Expected result: `hienThiNguyenVan` is `true`, no warning dialog pops up; this is the pass criterion of `message_bubble.js`.
+
+15. Detect a key leaking into memory without printing the key to the screen:
+
+```powershell
+$khoa = (Get-Content .\.env | Where-Object { $_ -match '^OPENAI_API_KEY=' }) -replace '^OPENAI_API_KEY=', ''
+$r = if ($khoa) { Select-String -Path .\memory.json -Pattern ([regex]::Escape($khoa)) -Quiet } else { $false }
+"LỌT KHÓA VÀO BỘ NHỚ: $r"
+```
+
+Expected result: it prints `LỌT KHÓA VÀO BỘ NHỚ: False`. This command only reads files and does not copy the key elsewhere.
+
+16. Broken request body and missing header. Check command: `Invoke-RestMethod -Uri http://127.0.0.1:2610/api/chat -Method Post -ContentType 'application/json' -Body '{ "message": '`. Expected result: code 400 with `{"error": "bad_request", ...}`; omitting the `Content-Type` header gives code 415.
+
+17. Body over 16 KB. Check command: build a long message with `('a' * 20000)` then send it. Expected result: code 413 with `{"error": "payload_too_large", ...}`, no stack trace.
+
+### Round E. Trial run with a fake server, no real key needed
+
+Purpose: demonstrate the three cases 401, 503, and 502 without using real money. The fake server is provided by the automated test suite at B13; it reads the environment variable `OPENAI_BASE_URL` which the OpenAI library has already read. The product code does NOT hardcode this address and does NOT delete the variable.
+
+1. Only trial keys built from the prefix `TEST_KEY_`. The sample key in the automated test is always `TEST_KEY_` followed by twenty x letters; only in Round E use the following three keys, all combined from the prefix `TEST_KEY_` so the fake server can distinguish them:
+
+```powershell
+$khoaDung  = 'TEST_KEY_' + ('x' * 20)
+$khoaSai   = 'TEST_KEY_' + 'BAD_' + ('x' * 16)
+$khoaRate  = 'TEST_KEY_' + 'RATE_' + ('x' * 15)
+$khoaDung.Length; $khoaSai.Length; $khoaRate.Length
+```
+
+Expected result: the three lengths are 28, 29, and 29 respectively; all three pass `validate_api_key`.
+
+2. Point the application to the fake server then restart:
+
+```powershell
+$env:OPENAI_BASE_URL = 'http://127.0.0.1:2611/v1'
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:2610/api/health
+```
+
+Expected result: `ok` is `True`; the environment variable has entered the child process.
+
+3. Wrong-key case, code 401:
+
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:2610/api/setup -Method Post -ContentType 'application/json' -Body (@{ api_key = $khoaSai } | ConvertTo-Json)
+try {
+  Invoke-RestMethod -Uri http://127.0.0.1:2610/api/chat -Method Post -ContentType 'application/json' -Body (@{ message = 'Em tên gì?'; session_id = 's1-aaaa-bbbb' } | ConvertTo-Json)
+} catch { $_.ErrorDetails.Message }
+```
+
+Expected result: `{"error": "upstream_error", "message": "Khóa API không đúng, nhập lại"}` with code 401.
+
+4. Quota-exhausted case, code 503: repeat step 3 with the variable `$khoaRate`. Expected result: `{"error": "upstream_error", "message": "Hệ thống đang quá tải, thử lại sau"}` with code 503; the status still shows `configured` is `True`, no dialog opens.
+
+5. Connection-lost case, code 502: point `OPENAI_BASE_URL` at a port where no process is listening, for example `http://127.0.0.1:2699/v1`, restart, send one message. Expected result: code 502 with `{"error": "upstream_error", "message": "Không kết nối được dịch vụ mô hình"}`.
+
+6. Empty-reply case, code 502: the fake server returns empty content per the B13 convention. Expected result: code 502 with `{"error": "empty_reply", "message": "..."}` in accented Vietnamese.
+
+7. Clean up the environment variable and return to the real configuration:
+
+```powershell
+Remove-Item Env:OPENAI_BASE_URL
+Get-CimInstance Win32_Process -Filter "Name like 'py%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+Invoke-RestMethod http://127.0.0.1:2610/api/setup/status
+```
+
+Expected result: `configured` is `True`; the variable has been removed from the PowerShell session.
+
+8. If the fake server is unavailable, state clearly in the report that the three cases 401, 503, and 502 are proven by `py -m pytest -q tests/test_map_openai_error.py` and `py -m pytest -q tests/test_langchain_chat_model.py`, not by screenshots.
+
+### Round F. Collecting evidence
+
+1. Screenshots: the key dialog when no key exists yet; the chat frame after saving; the results of the two questions; the result after deleting the conversation; the status after restarting. No screenshot may be taken while the key field still contains characters.
+2. Paste into the report: the last line of `py -m pytest -q`; the result of the 100-line command (empty); the result of the `Select-String` command with seven lines; the result of the key-leak detection command in Round D step 15.
+3. The final acceptance table of P8: each row is one case from the list of cases that must be covered, with status PASS or FAIL, reason, and evidence file name. The mandatory case list comprises: no key yet; malformed key; well-formed key rejected with 401; quota exhausted 503; network lost 502; timeout 504; busy port; `system-prompt.txt` missing; `system-prompt.txt` empty; changing `system-prompt.txt` requires a restart; `memory.json` corrupted; two tabs; accented Vietnamese; special HTML characters; key does not leak into memory.
+4. Fill in the pass-criterion column for each case according to the template: entry condition; operation; observed result; evidence location; status. Any case that cannot be reproduced is recorded as FAIL with a reason; never record it as passed.
+
+| B24 | Each prompt states how to resume if opencode stops midway (re-paste rule, checkpoint by tests) | P1..P9 | `resume|checkpoint` |
+
+## 3d. Decision tables
+
+Table 1. Decisions of the first-run API key flow
+
+| Input condition | Check | Output result | Error code or exception |
+|---|---|---|---|
+| `GET /api/setup/status`, `store.is_configured()` returns `False` | the key is empty in `.env` and in `os.environ` | `{"configured": false}` | none |
+| `POST /api/setup`, the key is empty or all whitespace | `validate_api_key` | `400` | `invalid_api_key` |
+| `POST /api/setup`, length outside the range of 20 to 200 | `validate_api_key` | `400` | `invalid_api_key` |
+| `POST /api/setup`, contains characters outside printable ASCII or contains inner whitespace | `validate_api_key` | `400` | `invalid_api_key` |
+| `POST /api/setup`, the key is well-formed | `EnvApiKeyStore.save` writes atomically | `{"ok": true}` | `500 save_failed` when the file cannot be written |
+| `POST /api/setup` from another machine | `request.remote_addr` is not in `{"127.0.0.1", "::1"}` | `403` | `forbidden` |
+| `POST /api/setup` missing `Content-Type: application/json` | `require_json` | `415` | `unsupported_media_type` |
+| `POST /api/setup`, the body is not a JSON object | `require_json` | `400` | `bad_request` |
+| `GET /api/setup/status` after saving | the `.env` file has exactly one line in key form | `{"configured": true}` | none |
+| Restart of `run.py` after saving | `EnvApiKeyStore.get` reads the file again | `{"configured": true}` | none |
+| The learner edits `.env` by hand while the server is running | the value loaded into the process memory is unchanged | `configured` keeps its old value | none; a restart is required |
+
+Table 2. Decisions of `POST /api/chat`
+
+| Input condition | Check | Output result | Error code or exception |
+|---|---|---|---|
+| `session_id` does not match `^[A-Za-z0-9-]{8,64}$` | `validate_session_id` | `400` | `invalid_session` |
+| `message` is empty or only whitespace | `validate_message` | `400` | `invalid_message` |
+| `message` is longer than 4000 characters | `validate_message` | `400` | `invalid_message` |
+| The body is larger than 16 KB | the `MAX_CONTENT_LENGTH` of Flask | `413` | `payload_too_large` |
+| There is no API key yet | `store.is_configured()` | `409` | `api_key_missing` |
+| A key exists but the provider rejects the authentication | `AuthenticationError` | `401` | `upstream_error` |
+| The rate limit is exceeded | `RateLimitError` | `503` | `upstream_error` |
+| The waiting time is exceeded | `APITimeoutError` | `504` | `upstream_error` |
+| The model service cannot be reached | `APIConnectionError` | `502` | `upstream_error` |
+| The model returns an empty string | the empty-content check after `reply` | `502` | `empty_reply` |
+| Another error of the library | `map_openai_error` | `500` | `upstream_error` |
+| The model replies and the history has enough messages | `repo.append` writes two messages | `200 {"reply", "model", "ms"}` | none |
+| The body has extra fields such as `history` | unknown fields are skipped | `200` as usual | none |
+| The server is not running or the network drops on the browser side | `fetch` throws a network error | `{ok: false, status: 0, data: {message: "Không kết nối được máy chủ"}}` | none |
+
+Table 3. Decisions for `system-prompt.txt`
+
+| Input condition | Check in `load_system_prompt` | Output result | Exception |
+|---|---|---|---|
+| The file exists and has content | the UTF-8 read succeeds | return the content verbatim | none |
+| The file exists but is empty or only whitespace | `len(text.strip()) == 0` | return the default string in accented Vietnamese | none |
+| The file does not exist | `is_file()` returns `False` | return the default string | none |
+| The file has a wrong encoding and the UTF-8 read fails | the decoding error is caught | return the default string | none |
+| The file has a byte order mark | the UTF-8 read still succeeds | the content is still returned; the first heading may come with a stray character | the file should be saved without a byte order mark |
+| The learner edits the file and then asks right away | `run.py` calls `load_system_prompt` only once at startup | the old content is still used | none |
+| A restart happens after the edit | `load_system_prompt` is called again | the new content is used | none |
+| The file lacks one of the seven headings | the test `test_system_prompt_file_has_required_sections` | the test goes red and names the missing item | fix the file; do not loosen the test condition |
+| The file exceeds 120 characters per line | the test `test_system_prompt_file_lines_are_short` | the test goes red | fix the file |
+| The file contains paths, network addresses or configuration key names | the test `test_system_prompt_file_has_no_secret_or_path` | the test goes red | remove them from the file; this is a violation of INV-P8-6 |
+
+Table 4. Decisions for `memory.json`
+
+| Input condition | Check | Output result | Exception |
+|---|---|---|---|
+| The file is missing | `is_file()` returns `False` | treat it as empty; the next write creates the file | none |
+| The directory containing the file is missing | `atomic_write_text` creates the parent directory | create the directory and then write | none |
+| The file is corrupt, the JSON is invalid | `json.loads` throws | rename it to `memory.json.corrupt-<timestamp>` and start empty | the JSON error is swallowed deliberately |
+| Concurrent writes from multiple requests | `threading.Lock` is held across the whole read then write | no message is lost | if the lock is skipped, messages are lost, which violates INV |
+| A reset of a session that does not exist | the session key is not in the file | succeed silently | none |
+| A message has Vietnamese diacritics and emoji | `atomic_write_json` uses `ensure_ascii=False` | reading it back with `-Encoding UTF8` shows the diacritics correctly | none |
+| A string contains the API key | match it against the value in `.env` without printing the value | a leaked key is detected and the report stops | none |
+| A message contains special HTML characters | the content is a string child of a React element | it is displayed verbatim, not executed | none |
+| The history exceeds `MAX_MESSAGES` | trim it only when it is read for the model | the file still keeps every message | none; this matches the decision at B6 |
+
+Table 5. Decisions for the user interface and the acceptance evidence
+
+| Input condition | Check | Output result | Error code or unmet criterion |
+|---|---|---|---|
+| `api_status` returns `configured` as `False` | `main.js` branches | show `setup_dialog` first; `chat_view` is not mounted yet | none |
+| `api_status` returns `configured` as `True` | `main.js` branches | go straight into `chat_view` without showing the dialog | none |
+| `api_setup` returns a network error | `fetch` throws | the key field stays unchanged and `Alert` shows a message | none |
+| `api_setup` returns 400 | `Alert` shows the `message` of the server | the dialog stays open and the "Lưu" button is enabled again | none |
+| `api_chat` returns 409 | `send_handler` branches | the API key dialog is opened again | none |
+| `api_chat` returns 401 | `send_handler` branches | the dialog is opened with the message "Khóa API không đúng" | none |
+| `api_chat` returns another error | an inline error bubble | the chat frame does not go blank and the input box stays usable | none |
+| The learner presses Enter in the input box | `chat_view` catches the key | the message is sent | none |
+| The learner presses Shift+Enter | `chat_view` catches the key | a newline is inserted and nothing is sent | none |
+| The button "Cuộc trò chuyện mới" is clicked | `api_reset` is called | the message list is empty and the server memory is cleared | none |
+| The window is narrowed to 800 px | a single-column layout with a maximum width of 900 px | nothing breaks and there is no horizontal overflow | none |
+| A screenshot contains an API key | inspect every screenshot | no screenshot contains a key | criterion unmet; the screenshots must be taken again |
+
+Table 6. Decisions for the PowerShell check commands and the corresponding pass criteria
+
+| Check command | Pass condition | Action when the condition is not met |
+|---|---|---|
+| `Get-ChildItem . -Filter system-prompt.txt` | it prints exactly one line | rerun step 4 of Round A |
+| `py -m pytest -q tests/test_load_system_prompt.py` | six tests are green | read the name of the red test and fix the file per Table 3 |
+| `py -m pytest -q tests/test_first_run_flow.py` | six tests are green | a `TypeError` means the `deps` signature has drifted |
+| `py -m pytest -q` | everything is green with 0 failures | move to the corresponding ERR in the ERR section |
+| The line-counting command at B11 | it prints nothing | split the file following the rule of one function per file |
+| `Invoke-RestMethod http://127.0.0.1:2610/api/health` | `ok` is `True` | see ERR.8 and ERR.9 |
+| `Invoke-RestMethod http://127.0.0.1:2610/api/setup/status` | `configured` is `False` on the first run and `True` after saving | see ERR.1 |
+| `Get-Content .\memory.json -Encoding UTF8` | four messages in the right order and no key | see ERR.13, ERR.15, ERR.29 |
+| The key-leak detection command at Round D step 15 | it prints `LỌT KHÓA VÀO BỘ NHỚ: False` | stop immediately per KILL.1 |
+
+## ERR
+
+**ERR.1.** Symptom: the page opens straight to the chat frame even though the server was just installed fresh. Cause: `.env` already has an `OPENAI_API_KEY=` line from a previous run, or the key is still inside the process's `os.environ`. Fix: delete the key line in `.env`, stop every `py run.py` process, restart, and confirm that `configured` is `False`. Related files: `src/chatbot/infrastructure/env_api_key_store.py`, `.env`.
+
+**ERR.2.** Symptom: you paste the key into the field, click Save, and the dialog reports the key as malformed even though the key is genuine. Cause: whitespace remains inside the key because the copy picked up a newline character, or a doubled double quote. Fix: click back into the field, paste from the original source, and check that the length falls between 20 and 200. Related files: `src/chatbot/application/validate_api_key.py`, `static/js/setup_dialog.js`.
+
+**ERR.3.** Symptom: the dialog closes, you go into chat, send a message, and the reply is 401 with the message "Khóa API không đúng, nhập lại". Cause: the key is well-formed but was rejected by the provider: a mistyped character, the key has been revoked, or a waiting period still applies. Fix: the dialog reopens by itself; paste the new key, click Save, and send again; there is no need to restart the server. Related files: `src/chatbot/infrastructure/map_openai_error.py`, `static/js/send_handler.js`.
+
+**ERR.4.** Symptom: the reply is 503 with "Hệ thống đang quá tải, thử lại sau". Cause: the quota was exceeded or the provider is temporarily slow. Fix: wait and then send again; do not re-enter the key; if you need proof right away, run `py -m pytest -q tests/test_map_openai_error.py`. Related files: `src/chatbot/infrastructure/map_openai_error.py`.
+
+**ERR.5.** Symptom: the reply is 502 with "Không kết nối được dịch vụ mô hình". Cause: the network dropped midway, the server is blocked inside the building, or the server is not running. Fix: turn the network back on and try `Invoke-RestMethod http://127.0.0.1:2610/api/health`; if this command also fails, the problem is the server, not the model. Related files: `src/chatbot/infrastructure/langchain_chat_model.py`, `static/js/api_chat.js`.
+
+**ERR.6.** Symptom: the model returns an empty string and the interface shows 502 `empty_reply`. Cause: the library's content filter returned empty. Fix: send the message again; if it repeats, look at `tests/test_send_message.py`. Related files: `src/chatbot/infrastructure/langchain_chat_model.py`, `static/js/chat_view.js`.
+
+**ERR.7.** Symptom: the reply is 504 "Mô hình trả lời quá lâu". Cause: `OPENAI_TIMEOUT` is too small or the model is congested. Fix: set `OPENAI_TIMEOUT=30` in `.env` and then restart the server. Related files: `src/chatbot/config/load_settings.py`, `.env`.
+
+**ERR.8.** Symptom: `py run.py` prints a message that the port is busy and then exits with code 1. Cause: port 2610 already has another process on it, usually a previous run that was never shut down. Fix: stop the old process with the command in Round C step 1, or change `PORT` in `.env` and then open the address at the new port. Related files: `run.py`, `.env`.
+
+**ERR.9.** Symptom: on restart you get a `SettingsError` about `HOST`. Cause: `HOST=0.0.0.0` in `.env`. Fix: change it back to `127.0.0.1` or `localhost` and restart. Related files: `src/chatbot/config/load_settings.py`, `.env`.
+
+**ERR.10.** Symptom: after you edit `system-prompt.txt` and ask again, the bot does not change how it answers. Cause: the content is read exactly once at startup, which is the decision in INV-P8-2. Fix: restart the server and then check again. Related files: `run.py`, `src/chatbot/infrastructure/load_system_prompt.py`.
+
+**ERR.11.** Symptom: `system-prompt.txt` has been deleted, yet the server still runs and the chat still answers. Cause: this is by design; the default string is used. Fix: nothing needs to be done; if you want the bot to follow the new persona, recreate the file and then restart. Related files: `src/chatbot/infrastructure/load_system_prompt.py`.
+
+**ERR.12.** Symptom: `system-prompt.txt` is empty, or the tests report that the file lacks Vietnamese diacritics, or one of the seven headings is missing. Cause: a character error when saving, saving with an encoding other than UTF-8, or accidentally deleting one item. Fix: run `py -m pytest -q tests/test_load_system_prompt.py`; fix the file and save it as UTF-8 without a byte-order mark. Related files: `system-prompt.txt`, `src/chatbot/infrastructure/load_system_prompt.py`.
+
+**ERR.13.** Symptom: on restart you see a new `memory.json.corrupt-<timestamp>` file appear. Cause: `memory.json` contains invalid JSON, usually because the server was shut down in the middle of a write. Fix: nothing needs to be done; the server starts by itself with empty memory; if you need the old history, repair the corrupt file and rename it back to `memory.json`. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.14.** Symptom: sending a message fails with an error about a missing directory. Cause: the directory that contains `memory.json` does not exist. Fix: `atomic_write_text` must create the parent directory; if it does not do so yet, fix `src/chatbot/infrastructure/atomic_write_text.py` and then run `py -m pytest -q tests/test_atomic_write.py`. Related files: `src/chatbot/infrastructure/atomic_write_text.py`.
+
+**ERR.15.** Symptom: two tabs send messages at the same time and one message disappears from `memory.json`. Cause: the read and the write do not sit inside the same lock, or a temporary file of the same name is shared by two threads. Fix: run `py -m pytest -q tests/test_json_memory_repository.py` with the twenty-thread case; every lock must span both the read and the write. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.16.** Symptom: `POST` is rejected with 415. Cause: `Content-Type: application/json` is missing. Fix: add exactly this header in every test command and in `api_chat.js`, `api_setup.js`, `api_reset.js`. Related files: `src/chatbot/interface/require_json.py`, `static/js/api_chat.js`.
+
+**ERR.17.** Symptom: `POST` is rejected with 400 and a message about a broken body. Cause: the request body is not a JSON object. Fix: test with PowerShell using `ConvertTo-Json` instead of writing the body string by hand. Related files: `src/chatbot/interface/require_json.py`.
+
+**ERR.18.** Symptom: a very long message is rejected with 413. Cause: the body exceeds 16 KB even though the text stays under 4000 characters, because some characters take several bytes. Fix: shorten the message; do not raise `MAX_CONTENT_LENGTH`. Related files: `src/chatbot/interface/create_app.py`.
+
+**ERR.19.** Symptom: the Save button in the dialog does not respond after the first click. Cause: a duplicate submission from clicking twice quickly, or the key field was cleared before the response arrived. Fix: disable the button while the send is in flight, clear the field after the response arrives, and report errors with `Alert`. Related files: `static/js/setup_dialog.js`, `static/js/api_setup.js`.
+
+**ERR.20.** Symptom: the reply is 500 `save_failed`. Cause: writing `.env` was denied permission, for example the file is open read-only, or another program is holding the file. Fix: close every editor that has `.env` open and try again; never leave a half-written file behind. Related files: `src/chatbot/infrastructure/env_api_key_store.py`, `src/chatbot/infrastructure/atomic_write_text.py`.
+
+**ERR.21.** Symptom: `.env` has Windows-style line endings, or carries two `OPENAI_API_KEY` lines. Cause: the file has been hand-edited many times. Fix: normalize it with `Get-Content ... | Where-Object { $_ -notmatch '^OPENAI_API_KEY=' } | Set-Content -Encoding ASCII`; `EnvApiKeyStore.save` must replace the old line, not accumulate lines. Related files: `src/chatbot/infrastructure/env_api_key_store.py`, `tests/test_env_api_key_store.py`.
+
+**ERR.22.** Symptom: the interface reports "Không kết nối được máy chủ" while the PowerShell window can still reach the health endpoint. Cause: the page was opened at the wrong port address, or `index.html` built the relative path wrongly. Fix: open exactly `http://127.0.0.1:2610`; keep every call command with the `/api` prefix unchanged. Related files: `static/js/api_status.js`, `static/js/main.js`.
+
+**ERR.23.** Symptom: Vietnamese inside the bubble shows strange marks or replacement box characters. Cause: `index.html` lacks an encoding declaration, or the message was transferred through a loading path that does not concatenate strings. Fix: add `<meta charset="utf-8">`; keep the content as a string child of the React element. Related files: `static/index.html`, `static/js/message_bubble.js`.
+
+**ERR.24.** Symptom: a message containing special HTML characters appears verbatim but with question marks, or disappears. Cause: the content was built by hand-inserting raw HTML, or the string was passed through an expression evaluator. Fix: only ever pass the string as a child element of a React element; run the Round D step 14 scenario again. Related files: `static/js/message_bubble.js`, `tests/test_static_rules.py`.
+
+**ERR.25.** Symptom: two tabs share one session, but each tab remembers different content. Cause: `session_id.js` creates a new one on every page load instead of reading `localStorage`. Fix: create a new one only when the key does not exist yet; after creating it, it must be written back immediately. Related files: `static/js/session_id.js`.
+
+**ERR.26.** Symptom: `py -m pytest -q` reports a collection error because it cannot find `src.chatbot`. Cause: `pytest.ini` has not declared the root path. Fix: declare it in `pytest.ini` exactly as P1 built it, then run again from the root directory. Related files: `pytest.ini`.
+
+**ERR.27.** Symptom: the API key dialog keeps reopening, popping up once for every send. Cause: a wrong key was saved into `.env`, so every turn returns 401, and `send_handler` opens the dialog on every turn. Fix: on 401, delete the key line in `.env` through `EnvApiKeyStore` before opening the dialog, so that the state matches `configured`. Related files: `static/js/send_handler.js`, `src/chatbot/infrastructure/env_api_key_store.py`.
+
+**ERR.28.** Symptom: `memory.json` keeps growing heavier even though `MAX_MESSAGES` equals 5. Cause: the misunderstanding that truncation must happen at write time. Fix: do not change anything; the design in B6 is to store every message and truncate only when reading for the model. If the file exceeds 5 MB, click the "Cuộc trò chuyện mới" button or delete the file while the server is stopped. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.29.** Symptom: when two requests for the same session are sent within the same second, the second turn does not see the first turn's message in the history. Cause: two threads read the memory before the first turn finished writing. Fix: this is acceptable behavior, not message loss; make sure `repo.append` still sits inside the same lock so that no message is lost. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.30.** Symptom: a Vietnamese message gets cut off at the end when it exceeds 4000 characters. Cause: `validate_message` rejects the over-long message before it is sent on. Fix: split the message into two turns; do not raise the limit, because the request body is also capped at 16 KB. Related files: `src/chatbot/application/validate_message.py`.
+
+**ERR.31.** Symptom: a screenshot in the report has the API key masked, but an earlier hint exposes the last four characters. Cause: `mask_secret` was used correctly, but the picture also captured the password-style input field before it was cleared. Fix: clear the input field before capturing, or do not capture the input-field area; the report only uses masked images. Related files: `src/chatbot/infrastructure/mask_secret.py`, `static/js/setup_dialog.js`.
+
+**ERR.32.** Symptom: `py -m pytest -q tests/test_first_run_flow.py` reports a `TypeError` about the parameters of `create_app`. Cause: P6 built `create_app` with a signature that differs from the five-component convention. Fix: adjust `build_app` to match the existing signature, keeping the names of the six tests; do not rename the tests. Related files: `src/chatbot/interface/create_app.py`, `tests/test_first_run_flow.py`.
+
+**ERR.33.** Symptom: after saving the key, pressing F5 to reload the page makes the API key dialog appear again even though the key is still there. Cause: the `.env` file was left half-written because `atomic_write_text` does not delete the temporary file on error, or a leftover temporary file is still around and gets read by mistake. Fix: clean up the temporary files in the same directory, verify that `atomic_write_text` re-raises the error and deletes the temporary file; run `py -m pytest -q tests/test_atomic_write.py`. Related files: `src/chatbot/infrastructure/atomic_write_text.py`.
+
+**ERR.34.** Symptom: when the page opens, the browser reports a module load error in the Console. Cause: `index.html` loads the js files through wrong relative paths, or uses `type="module"` while the files are not yet served with the correct extension. Fix: keep `<script type="module" src="/static/js/main.js">` and make every `import` statement use an absolute path starting with `/static/js/`. Related files: `static/index.html`, `static/js/main.js`.
+
+**ERR.35.** Symptom: `OPENAI_BASE_URL` points at the mock server, but the application still calls the real service, or conversely the application takes no notice of the variable. Cause: the variable was set after the process had already started, or it was set in a PowerShell window other than the one running `py run.py`. Fix: set the variable and then restart the server with `Start-Process` in that same window, or declare the variable at machine level and open a new window. Related files: `run.py`.
+
+**ERR.36.** Symptom: emoji in messages display as square boxes. Cause: the emoji font has not finished loading from the CDN. Fix: reload the page after the font has finished loading, or leave emoji out of the test messages; do not change the font in the application code. Related files: `static/index.html`.
+
+**ERR.37.** Symptom: the directory piles up many `memory.json.corrupt-<timestamp>` files. Cause: each restart with a corrupt file produces another new one. Fix: delete the old files while the server is stopped; do not modify `json_memory_repository.py` to bypass the rename mechanism. Related files: `src/chatbot/infrastructure/json_memory_repository.py`.
+
+**ERR.38.** Symptom: the `test_load_settings.py` test is green, but a manual run still hits a configuration error. Cause: the test command was run from a subdirectory, so `pytest.ini` was not loaded, or the real `.env` differs from the temporary `.env` used in the test. Fix: always run the test command from the root directory `chatbot/`; confirm with `Get-Location`. Related files: `pytest.ini`.
+
+**ERR.39.** Symptom: Vietnamese messages in error responses show strange marks, while the error codes are correct. Cause: the file holding the messages was saved with an encoding other than UTF-8, usually because of old-style text editing and saving. Fix: re-save `src/chatbot/interface/json_error.py` and every file containing messages as UTF-8; check again with `Invoke-RestMethod` and read the error body inside `try` and `catch`. Related files: `src/chatbot/interface/json_error.py`, `src/chatbot/domain/errors.py`.
+
+**ERR.40.** Symptom: `Get-Content .\system-prompt.txt` shows strange marks, while the tests report the file as valid. Cause: the encoding of the PowerShell window, not the file content. Fix: run `Get-Content .\system-prompt.txt -Encoding UTF8`; do not edit the file on the basis of this wrong impression. Related files: `system-prompt.txt`.
+
+**ERR.41.** Symptom: the 200 response of `/api/chat` lacks the `ms` or `model` field. Cause: `create_app` or `chat_route` left out a field when assembling the returned object. Fix: fix `src/chatbot/interface/routes/chat_route.py` to carry all three fields, then run `py -m pytest -q tests/test_routes.py` again. Related files: `src/chatbot/interface/routes/chat_route.py`.
+
+**ERR.42.** Symptom: clicking the "Cuộc trò chuyện mới" button returns 400 `invalid_session`. Cause: the `session_id` key in `localStorage` was deleted or is not in the right format. Fix: check that `static/js/session_id.js` recreates the key when it is missing; reload the page and try again. Related files: `static/js/session_id.js`, `static/js/api_reset.js`.
+
+## KILL
+
+**KILL.1.** Stop immediately and report if the API key appears anywhere outside the `OPENAI_API_KEY` line in `.env`: in the server logs, in endpoint responses, in `memory.json`, in screenshots, in error messages. Verify with the command in Round C step 3 and Round D step 15, which only compare without printing the value. Report the file name and the line that violates the rule.
+
+**KILL.2.** Stop immediately if any file in `domain/` carries an `import` line containing `flask`, `langchain`, `openai`, `dotenv`, `os`, `pathlib` or `json`. Run `py -m pytest -q tests/test_domain_purity.py`; if the test is red, stop, and do not fix it by loosening the test condition.
+
+**KILL.3.** Stop immediately if any file in `chatbot/` exceeds 100 lines and cannot be split under the one-function-per-file rule. Run the line-check command from B11; if a file exceeds the limit, split off new files under the convention and run again; never compress several statements onto one line.
+
+**KILL.4.** Stop immediately if, after three debugging rounds, `py -m pytest -q` is still red, or if a file outside the P8 scope has to be touched to make the P8 tests green. Report the list of remaining failures and the related files, then hand over to P9.
+
+**KILL.5.** Stop immediately if any file in `static/` builds message content by inserting raw HTML, uses a property that overwrites the DOM content, or passes strings through an expression evaluator. This is an absolute blocking condition: message bubbles only accept strings as children of React elements. Verify with `py -m pytest -q tests/test_static_rules.py`.
+
+**KILL.6.** Stop immediately if a source file, `.env.example` or `system-prompt.txt` is found to contain a real key, or if a string beginning with the provider's key prefix has to be written into any file. Use only `TEST_KEY_` followed by twenty x letters for every example and every test.
+
+**KILL.7.** Stop immediately if there is any intention to run `py run.py` inside the opencode shell, to run bash-style commands, or to run with system administrator privileges in order to write files. The server may only be started with `Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'`, and every write-permission error is handled by closing the program that holds the file, never by escalating privileges.
+
+**KILL.8.** Stop immediately if you want to add a sixth route beyond the five routes in B7, or want `/api/chat` to accept history from the browser side. History comes only from `memory.json`; extra fields from the request body must be ignored.
+
+**KILL.9.** Stop immediately if you edit `.env` by hand while the server is running and then conclude that the new value has taken effect. `EnvApiKeyStore` loads the value into process memory; a hand edit requires a restart, whereas writing through `/api/setup` does not.
+
+**KILL.10.** Stop immediately if `domain/` is found importing from `application/`, `infrastructure/` or `interface/`. The dependency direction only goes from interface, application and infrastructure toward the domain; `infrastructure` only implements the domain's ports.
+
+**KILL.11.** Stop immediately if `HOST=0.0.0.0` would be needed to let another device on the same network gain access. The server listens on loopback only; the remote-access need is a different scope, not part of P8.
+
+**KILL.12.** Stop immediately if the "Tên em là Lan" scenario cannot be reproduced after three reruns of Round C with steps 2, 5, 6, 8 and 9. Then report clearly where the chain broke: the dialog, saving the key, writing the memory, reading the history, or the restart. It is not permitted to record a pass if the answer was merely seen on screen without reading the two messages in `memory.json`.
+
+**KILL.13.** Stop immediately before deleting `memory.json` or `.env` while the server is running. Every file-cleanup operation must first stop every `py run.py` process, and the file must be renamed into a retention file in the project directory instead of being permanently deleted; then record the name of the retention file clearly in the report.
+
+**KILL.14.** Stop immediately if you are about to use the real key for repeated trial runs while debugging. Switch to the `TEST_KEY_` key and the mock server in Round E; use the real key exactly once, for the core scenario in Round C steps 5 and 6.
+
+**KILL.15.** Stop immediately if any file outside the directory tree in B2 has to be created, including private note files, temporary backups or auxiliary configuration files. Everything needed for P8 must live in `system-prompt.txt`, `tests/test_load_system_prompt.py`, `tests/test_first_run_flow.py`, or in the files already present from P1 through P7. When file content must be stashed away to test the missing-file or temporarily-empty case, use variables in one PowerShell window and write it back with `[System.IO.File]::WriteAllText`; never create backup files outside the project.
+
+**KILL.16.** Stop immediately if the UNVERIFIED note in `static/index.html` next to each CDN path that has not been tried on the learner's machine gets deleted even though P7 confirmed the path works, or if the rule checklist in `tests/test_static_rules.py` has to be edited to make P8 green. The rule checklist is P7's decision; P8 only reads and quotes it.
+
+**KILL.17.** Stop immediately if the acceptance table in Round F records PASS for a case that only has verbal evidence: the 401, 503, 502, empty-reply and quota-exhausted cases must have a corresponding test line in `py -m pytest -q`, or must have a record from the mock server in Round E. Any case that lacks evidence is recorded as NOT PASS together with a specific reason.
+
+**KILL.18.** Stop immediately if `system-prompt.txt` is found to contain a file path, a network address, a configuration key name or an em dash. This violates INV-P8-5 and INV-P8-6; fix the content of the file and run `py -m pytest -q tests/test_load_system_prompt.py` again; never loosen the test condition.
+
+
+# 4. Format:
+
+## 4.0 Terminology, defined once for all of P8
+
+| term | Vietnamese meaning |
+|---|---|
+| opencode | coding assistant that runs in a command-line window, reads the task description and then generates files |
+| API | programming interface for a program to call an external service, here the model service |
+| endpoint | a specific URL path that the API listens on, e.g. `/api/chat` |
+| venv | virtual Python environment, the `.venv` directory, isolating installed packages from the system |
+| pytest | automated test-running tool for Python |
+| DDD | theory of designing around the business domain, split into interface, application, domain, infrastructure layers |
+| TDD | workflow of writing tests first, seeing red, then writing code to turn green |
+| MUI | UI component library for React, using the UMD build loaded from a CDN |
+| formal spec | formal specification, written with PRE, POST, INV, ERR, KILL and mathematical symbols |
+
+## 4.1 PRE
+
+- PRE: P0 through P7 are done, the B2 directory tree has all required files, `py -m pytest -q` is green before invoking P8.
+- PRE: `system-prompt.txt` does not yet exist or is currently an empty file, so P8 creates it fresh.
+- PRE: port 2610 is free.
+
+## 4.2 POST
+
+- POST: `system-prompt.txt` exists under 100 lines, with all six sections of the RCIFENI-O framework.
+- POST: `src/chatbot/infrastructure/load_system_prompt.py` loads the file as UTF-8; a missing file or empty file returns the default, no crash.
+- POST: there is a PowerShell trial-run log consisting of one RED round followed by one GREEN round.
+- POST: every B10 case within P8's scope has observable evidence.
+
+## 4.3 INV
+
+- INV: the API key lives only in `.env`, ∀ the lifetime of the server.
+- INV: the decision to read `system-prompt.txt` exactly ONCE per process startup, never re-read on each chat turn.
+- INV: ∀ Python and JavaScript files in `chatbot/`: line count < 100.
+- INV: errors return `{"error": "<mã>", "message": "<tiếng Việt>"}`, never a stack trace.
+
+## 4.4 Mandatory result tables printed at the end
+
+Table 1, result files:
+
+| file | line count | note |
+|---|---|---|
+| `system-prompt.txt` | ≤ 99 | all 6 RCIFENI-O sections |
+| `src/chatbot/infrastructure/load_system_prompt.py` | ≤ 99 | loads UTF-8, default when missing or empty |
+| `tests/test_load_system_prompt.py` | ≤ 99 | 7 fixed cases |
+
+Table 2, the 100-line rule: run the command in section 5.4; the expected result is that NO line is printed.
+
+Table 3, error cases and edge cases:
+
+| case | trigger | expected result | evidence |
+|---|---|---|---|
+| no key yet | delete the `OPENAI_API_KEY` line in `.env`, restart | `configured: false`, the dialog "Nhập khóa API" appears, the server does not crash | `Invoke-RestMethod` returns `configured False` |
+| malformed key | enter `abc` into the dialog | 400, code `invalid_api_key`, key field cleared, dialog still open | message shown on `Alert` |
+| wrong key but well-formed | save `TEST_KEY_xxxxxxxxxxxxxxxxxxxx`, then send a message | 401, error code, dialog reopens with message "Khóa API không đúng" | message in the chat frame |
+| quota exhausted | model returns error 429 | 503, message "Hệ thống đang quá tải, thử lại sau" | returned code |
+| network drops midway | turn off the network then send a message | 502, "Không kết nối được dịch vụ mô hình" | returned code |
+| port busy | run `py run.py` a second time | prints a Vietnamese message suggesting changing `PORT`, exit code 1 | second window |
+| `system-prompt.txt` missing | rename the file | still chats using the short default | the answer is still valid |
+| `system-prompt.txt` empty | write one blank line | still chats using the default | the answer is still valid |
+| change the declaration content | edit the declaration then send a message while the server is running | the answer still follows the old version | compare the returned text |
+| `memory.json` corrupted | write invalid JSON then send a message | file is renamed `memory.json.corrupt-<timestamp>`, chat still runs | `Get-ChildItem memory.json*` |
+| two tabs, same session | open two tabs, same `session_id` | both share the history, no 500 error | both tabs show the same content |
+| Vietnamese with diacritics | send "Em tên là Lan, học tiếng Anh mỗi tối" | displays diacritics correctly, no 400 error | screenshot |
+| HTML characters | send `<script>alert(1)</script>` | shown verbatim, does NOT execute code | screenshot |
+
+## 4.5 ERR
+
+- ERR: if `system-prompt.txt` cannot be built, print a Vietnamese message clearly stating the file is missing; DO NOT silently skip it.
+- ERR: a log leaking a real key is a blocking error; must stop and report.
+
+## 4.6 KILL
+
+- KILL: stop immediately if `sk-` is detected in `system-prompt.txt`, `.env.example`, `AGENTS.md` or `memory.json`.
+
+# 5. Example:
+
+## 5.1 `system-prompt.txt`
+
+```text
+# HUB-Buddy, tuyên danh hệ thống
+
+## 1. VAI TRÒ
+Bạn là HUB-Buddy, trợ lý ảo hỗ trợ học tập cho học viên của HUB.
+Bạn trả lời như một người thầy thân thiện, cô đọng, biết dừng đúng lúc.
+
+## 2. BỐI CẢNH
+Học viên dùng trang web chatbot trên máy tính cá nhân.
+Lịch sử trò chuyện được lưu theo từng phiên và chỉ giữ 5 tin gần nhất.
+Người dùng nói tiếng Việt, nên câu trả lời mặc định bằng tiếng Việt có dấu.
+
+## 3. CHỈ DẪN
+C1. Trả lời trực tiếp câu hỏi, tối đa 5 câu, mỗi câu một ý.
+C2. Hỏi lại tối đa1 câu khi thiếu thông tin, không hỏi nhiều lần.
+C3. Nếu học viên hỏi tên, nhớ và dùng lại đúng tên đã nói trong phiên.
+C4. Nếu học viên hỏi ngoài phạm vi học tập, nói ngắn gọn rồi đưa về chủ đề học.
+C5. Không khẳng định điều mình không biết, nói "Em chưa chắc" thay vì đoán.
+C6. Không hỏi lại khóa API, không đề nghị người dùng sửa tệp.
+C7. Không lặp lại nguyên văn lịch sử trò chuyện.
+
+## 4. ĐỊNH DẠNG
+D1. Câu ngắn, xuống dòng khi đổi ý.
+D2. Dùng gạch đầu dòng khi liệt kê từng bước.
+D3. Không dùng khung Markdown nặng, không dùng bảng trừ khi thật cần.
+D4. Không chèn thẻ HTML, không chèn mã, không chèn liên kết quảng cáo.
+
+## 5. ĐẦU VÀO
+I1. system: tuyên danh này.
+I2. history: tối đa 5 tin gần nhất, mỗi tin có vai trò human hoặc ai.
+I3. input: câu hỏi hoặc lời nhắn mới của học viên.
+
+## 6. OKR
+KR1: câu trả lời dài không quá 5 câu trong 9/10 lượt hỏi đầu tiên.
+KR2: nhớ đúng tên học viên trong phiên hiện tại.
+KR3: không bao giờ lộ khóa API hay nội dung tệp cấu hình.
+KR4: từ chối lịch sự khi câu hỏi nằm ngoài phạm vi học tập.
+```
+
+## 5.2 `src/chatbot/infrastructure/load_system_prompt.py`
+
+```python
+"""Nap system-prompt.txt theo UTF-8; thieu tep hoac tep rong thi dung mac dinh."""
+
+from pathlib import Path
+
+DEFAULT_SYSTEM_PROMPT = (
+    "Ban la tro ly hoc tap HUB-Buddy. "
+    "Tra loi bang tieng Viet co dau, ngan gon, dung vai tro tro ly."
+)
+
+
+def load_system_prompt(path: str) -> str:
+    """PRE: path la chuoi duong dan tep. POST: tra ve chuoi khong rong."""
+    target = Path(path)
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return DEFAULT_SYSTEM_PROMPT
+    except UnicodeDecodeError:
+        return DEFAULT_SYSTEM_PROMPT
+    cleaned = text.replace("﻿", "").strip()
+    if not cleaned:
+        return DEFAULT_SYSTEM_PROMPT
+    return cleaned
+```
+
+| B24 | Each prompt states how to resume if opencode stops midway (re-paste rule, checkpoint by tests) | P1..P9 | `resume|checkpoint` |
+
+## 5.3 `tests/test_load_system_prompt.py`
+
+```python
+"""Kiem tra load_system_prompt: thieu tep, tep rong, BOM, tieng Viet co dau."""
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from src.chatbot.infrastructure.load_system_prompt import (  # noqa: E402
+    DEFAULT_SYSTEM_PROMPT,
+    load_system_prompt,
+)
+
+
+def test_mac_dinh_khong_rong():
+    assert DEFAULT_SYSTEM_PROMPT.strip() != ""
+
+
+def test_thieu_tep_tra_mac_dinh(tmp_path):
+    assert load_system_prompt(str(tmp_path / "khong_co.txt")) == DEFAULT_SYSTEM_PROMPT
+
+
+def test_tep_rong_tra_mac_dinh(tmp_path):
+    target = tmp_path / "system-prompt.txt"
+    target.write_text("   \n\n", encoding="utf-8")
+    assert load_system_prompt(str(target)) == DEFAULT_SYSTEM_PROMPT
+
+
+def test_doc_tien_viet_co_dau(tmp_path):
+    target = tmp_path / "system-prompt.txt"
+    target.write_text("Bạn là HUB-Buddy.", encoding="utf-8")
+    assert load_system_prompt(str(target)) == "Bạn là HUB-Buddy."
+
+
+def test_bom_dau_tep_bi_lo(tmp_path):
+    target = tmp_path / "system-prompt.txt"
+    target.write_text("\ufeffHUB-Buddy", encoding="utf-8")
+    assert load_system_prompt(str(target)) == "HUB-Buddy"
+
+
+def test_duong_dan_la_thu_muc(tmp_path):
+    assert load_system_prompt(str(tmp_path)) == DEFAULT_SYSTEM_PROMPT
+
+
+def test_tuyen_that_co_du_muc_rcifenio():
+    text = load_system_prompt(str(ROOT / "system-prompt.txt"))
+    for muc in ("VAI TRÒ", "BỐI CẢNH", "CHỈ DẪN", "ĐỊNH DẠNG", "ĐẦU VÀO", "OKR"):
+        assert muc in text
+
+
+def test_tuyen_that_du_100_dong():
+    lines = (ROOT / "system-prompt.txt").read_text(encoding="utf-8").splitlines()
+    assert len(lines) < 100
+```
+
+## 5.4 End-to-end trial run order using PowerShell
+
+```powershell
+# Buoc 1: bao dam khong con tien trinh cu chay
+Get-Process | Where-Object { $_.ProcessName -eq 'python' } | Select-Object Id, ProcessName
+
+# Buoc 2: chay nen may chu
+Start-Process powershell -ArgumentList '-NoExit','-Command','py run.py'
+Start-Sleep -Seconds 3
+
+# Buoc 3: kiem tra suc khoe
+Invoke-RestMethod http://127.0.0.1:2610/api/health
+
+# Buoc 4: trang thai khoa, truoc khi nhapInvoke-RestMethod http://127.0.0.1:2610/api/setup/status
+
+# Buoc 5: mo trinh duyet
+Start-Process http://127.0.0.1:2610/
+
+# Buoc 6: doi giang doan kiem tra 100 dong, ket qua mong doi la in rong
+Get-ChildItem -Recurse -Include *.py,*.js | Where-Object { $_.FullName -notmatch '\.venv|node_modules' } | ForEach-Object { if ((Get-Content $_.FullName | Measure-Object -Line).Lines -ge 100) { $_.FullName } }
+
+# Buoc 7: quet bi mat, ket qua mong doi la khong co dong nao
+$needle = 's' + 'k' + '-'
+Select-String -Path .\system-prompt.txt,.\.env.example,.\AGENTS.md,.\memory.json -Pattern $needle -SimpleMatch
+
+# Buoc 8: chay kiem thu
+py -m pytest -q
+```
+
+## 5.5 Sample log excerpt, RED run then GREEN run
+
+```text
+--- LUOT DO, chay py -m pytest -q truoc khi viet ma ---
+E ModuleNotFoundError: No module named 'src.chatbot.infrastructure.load_system_prompt'
+E   assert 'VAI TRÒ' in 'Ban la tro ly hoc tap HUB-Buddy. ...'
+1 failed, 6 passed in 0.41s
+
+--- LUOT DO, chay lai sau khi tao tep va viet ham ---
+tests/test_load_system_prompt.py ........ [100%]
+8 passed in 0.93s
+
+--- CHAY THU DAU CUOI ---
+Get-Process python : (khong co dong nao)
+Invoke-RestMethod /api/health           : ok = True
+Invoke-RestMethod /api/setup/status     : configured = False   <- truoc khi nhap khoa
+[mo trinh duyet, hop thoai "Nhap khoa API" hien ra, dan khoa, bam Luu]
+[hop thoai dong, khung chat hien ra]
+Goi tin "Ten em la Lan"   -> reply = "Chào Lan! Rất vui được gặp bạn."
+Goi tin "Em ten gi?" -> reply = "Em tên là Lan nhé." <- con nho ten
+Invoke-RestMethod /api/reset              -> ok = True
+Tat may chu va chay lai
+Invoke-RestMethod /api/setup/status : configured = True    <- khoa van con
+```
+
+## 5.6 Manual scenario acceptance criteria | step | action | pass criterion |
+|---|---|---|---|
+| A | open the page when no key exists yet | the "Nhập khóa API" dialog appears before the chat frame, and the chat frame does not allow sending yet |
+| B | paste the key then press Lưu | the dialog closes, the chat frame is usable immediately, no server restart |
+| C | send "Tên em là Lan" | the chat frame has 2 new bubbles, the user bubble is on the right |
+| D | send "Em tên gì?" | the answer contains exactly the name Lan |
+| E | press "Cuộc trò chuyện mới" | the chat frame is empty; ask the name again and the AI bubble does not remember |
+| F | turn off then run again `py run.py` | `configured` is True, it goes straight into the chat frame |
+| G | enter `abc` then Lưu | a red error is reported inside the dialog, the chat frame does not receive the message |
+| H | edit `system-prompt.txt` while the server is running | answers still follow the old version; after restart they follow the new version |
+
+# 6. Notices:
+
+- Do NOT paste the API key into this conversation with opencode; reason: the key will remain in the work-session history.
+- Do NOT paste the key into `.env.example`, `AGENTS.md`, `system-prompt.txt`, `memory.json`; reason: these files are easily copied.
+- Do NOT print the key to the PowerShell window or into the log; use `mask_secret` returning `****` plus the last 4 characters; reason: avoid leaking through screenshots.
+- Do NOT run `py run.py` directly in opencode's shell; use `Start-Process`; reason: the server occupies the process loop.
+- Do NOT use bash commands, do NOT use `sudo`, do NOT use `source`, do NOT use `curl`; reason: the blueprint uses only PowerShell and `Invoke-RestMethod`.
+- Do NOT use `python3`; on Windows 11 the command is `py`; reason: `python3` may not exist.
+- Do NOT create files outside the B2 folder tree, do NOT create `AGENTS.local.md`, do NOT create a `scripts/` folder; reason: the folder tree is the contract among 10 prompts.
+- Do NOT use JSX or Babel in `static/js`; reason: the blueprint forbids it, you must use `React.createElement` with global variables.
+- Do NOT use `innerHTML` or `dangerouslySetInnerHTML` in any file under `static/`; reason: the `<script>` case must be shown verbatim.
+- Do NOT write a sample key string beginning with the provider's prefix; in tests use only `TEST_KEY_` plus 20 x's; reason: avoid letting a real key fall into source code.
+- Do NOT change the decision to read `system-prompt.txt` on every startup; reason: reading every turn increases file operations and makes answers unstable.
+- Do NOT let `/api/chat` receive history from the client; reason: the client could fake roles and corrupt memory.
+- Do NOT use a fake key to claim the real flow ran; when saving `TEST_KEY_xxxxxxxxxxxxxxxxxxxx` and receiving 401 that is the CORRECT RESULT; reason: prove error mapping, not prove the model works.
+- Do NOT delete `memory.json` when corruption occurs; rename it to `memory.json.corrupt-<timestamp>`; reason: keep traces for investigation.
+- Do NOT reinitialize the application while two requests are running; reason: contention on the memory-file write lock.
+- Do NOT open two tabs and enter different keys in the same `session_id`; reason: memory is per session, easy to misunderstand.
+- Do NOT run `py -m pytest -q` before activating `.\.venv\Scripts\Activate.ps1`; reason: `langchain` and `flask` may be missing.
+- Do NOT write `system-prompt.txt` with a BOM; the loader already filters `ufeff` but the original file should still be clean; reason: BOM causes errors in other tools.
+- Do NOT conclude "done" before running the 100-line check and the secret scan; reason: these two commands are machine evidence, not a promise.
+- Do NOT print the whole raw response content of the model service into the log; reason: it may contain user data.
+
+# 7. Input:
+
+Before running P8, the learner provides opencode the following items, one item per line:
+
+- `THU_MUC`: absolute path of the `chatbot` folder already built from P0 to P7.
+- `KET_QUAT_PYTEST`: paste verbatim the last line of the previous `py -m pytest -q` run before calling P8; if it is red, stop and fix P7 first.
+- `CO_KHOA_THAT`: answer `co` or `khong`. If `co`, do NOT send the key through chat; only confirm that you will paste it yourself into the dialog on the page during the trial run.
+- `TEN_HOC_VIEN`: name to use in the scenario, default `Lan`.
+- `PORT_MOI`: if port 2610 is busy, the replacement port number in the range 1024 to 65535.
+- `VI_TRI_TEP`: confirm that `system-prompt.txt` and `memory.json` are in the `chatbot` root folder.
+- `ANH_CHUP`: optionally, the learner pastes a screenshot of the dialog and chat frame after running; the image is evidence for steps A and B.
+
+The API key MUST NOT be pasted into chat with opencode. The key is entered manually into the password box in the "Nhập khóa API" dialog on the chatbot's first run, the server writes it to `.env`, then every chat turn uses that key. If the learner has no real key yet, use `TEST_KEY_xxxxxxxxxxxxxxxxxxxx` to verify the 401 error mapping and state clearly in the report that the real model case has not been proven.
+
+# 8. OKRs (O + KRs):
+
+- O: Complete P8 with a system declaration in exactly the RCIFENI-O shape, a green test suite, and an end-to-end trial scenario with clear pass criteria for all error cases of P8.
+- KR1: `tests/test_load_system_prompt.py` has exactly 8 cases and `py -m pytest -q` reports `8 passed` for this file.
+- KR2: `system-prompt.txt` has 40 to 99 lines and contains all 6 sections VAI TRÒ, BỐI CẢNH, CHỈ DẪN, ĐỊNH DẠNG, ĐẦU VÀO, OKR.
+- KR3: the 100-line check in section 5.4 prints 0 lines, meaning `system-prompt.txt` and `load_system_prompt.py` are both under 100 lines.
+- KR4: the secret scan in section 5.4 returns 0 matching lines across `system-prompt.txt`, `.env.example`, `AGENTS.md`, `memory.json`.
+- KR5: there are both log excerpts, one RED run before writing code and one GREEN run after writing code, each pasted verbatim in the report.
+- KR6: the 13-case matrix in section 4.4 has all 13 rows, each row one observable piece of evidence, no row says "unchecked".
+- KR7: before entering the key, `/api/setup/status` returns `configured false`; after entering it and after restarting `py run.py`, it returns `configured true`.
+- KR8: the two-turn scenario gives the correct result, turn one receives "Tên em là Lan", turn two answers with a string containing `Lan`.
+- KR9: after pressing "Cuộc trò chuyện mới", the ask-name-again turn does NOT contain the string `Lan`.
+- KR10: editing `system-prompt.txt` while the server is running does not change behavior; after one restart the behavior changes, proving a read-once-per-process decision.
+- KR11: the `<script>alert(1)</script>` case is shown verbatim in the bubble and does not open the browser's alert dialog.
+- KR12: the total runtime of scenario A to H is at most 120 seconds from typing `Start-Process`, with each chat turn returning under 10 seconds.
+| B24 | Each prompt states how to resume if opencode stops midway (re-paste rule, checkpoint by tests) | P1..P9 | `resume|checkpoint` |
+
